@@ -1,0 +1,30 @@
+/* ***********************************************************************
+   TRANSITION entre pages (rideau .transition)
+   *********************************************************************** */
+.transition_div {
+  position: fixed;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transition_div .transition {
+  height: 100vh;
+  background: #222;
+  color: rgb(230, 230, 230);
+  flex: 1;
+  transform: translateY(0);
+  will-change: transform;
+}
+
+.transition_div .transition_center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 50px;
+}

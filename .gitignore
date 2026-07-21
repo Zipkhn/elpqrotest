@@ -5,3 +5,6 @@ node_modules
 .eslintcache
 yarn-error.log
 .claude
+
+# Notes de dev perso (mémoire de reprise du projet) — jamais poussé
+zipdev/

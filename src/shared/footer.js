@@ -12,9 +12,12 @@ export default function initFooter() {
     scrollTrigger: {
       trigger: '.cols_footer',
       pin: true,
-      scrub: 1,
+      scrub: 0.5, // moins de latence que 1
       start: 'bottom bottom',
-      end: 'bottom -50%',
+      // end : 2e nombre = % de fenêtre. Plus il est HAUT, moins il faut
+      // scroller avant que le footer soit entièrement monté.
+      // -50% ≈ 1,5 écran de scroll ; 25% ≈ 0,75 écran. Ajuste à ton goût.
+      end: 'bottom 25%',
     },
   })
 

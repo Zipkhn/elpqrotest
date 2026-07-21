@@ -69,9 +69,9 @@ Le workflow GitHub Actions (`.github/workflows/cd.yml`) se déclenche automatiqu
 Il ne reste plus qu'à charger votre JS de production sur le site Webstudio via **jsDelivr**, qui sert le fichier directement depuis GitHub. Collez ce script dans le custom code (`Before </body> tag`) :
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Zipkhn/webstudio-starter@main/dist/main.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Zipkhn/elpqrotest@main/dist/main.js"></script>
 ```
 
-> Remplacez `Zipkhn/webstudio-starter` par `votre-user/votre-repo`.
+> Repo servi : `Zipkhn/elpqrotest`.
 > L'URL `@main` sert toujours la dernière version : le cache est purgé à chaque push, donc pas besoin de la changer.
 > Pour figer une version précise (cache permanent), utilisez un tag git à la place, ex. `@1.0.2`.

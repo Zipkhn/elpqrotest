@@ -8,10 +8,10 @@ Le code est bundlé en un seul fichier minifié servi via [jsDelivr](https://www
 Une seule ligne dans le custom code Webstudio (`Before </body> tag`), sur toutes les pages :
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/USER/REPO@main/dist/main.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Zipkhn/elpqrotest@main/dist/main.js"></script>
 ```
 
-> Remplacez `USER/REPO` par le repo GitHub. GSAP (+ ScrollTrigger + Observer) est **bundlé** :
+> Repo servi : `Zipkhn/elpqrotest`. GSAP (+ ScrollTrigger + Observer) est **bundlé** :
 > ne chargez pas de `<script>` GSAP CDN en plus, sinon deux instances entrent en conflit.
 
 ## Routing par page

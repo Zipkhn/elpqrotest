@@ -16,15 +16,15 @@ Une seule ligne dans le custom code Webstudio (`Before </body> tag`), sur toutes
 
 ## Routing par page
 
-Chaque page n'exécute que son propre script. Le tri se fait par une **classe sur le `<body>`**,
-à définir dans Webstudio (Settings de la page → classe du body) :
+Chaque page n'exécute que son propre script. Le tri se fait par un **attribut `data-page` sur le `<body>`**,
+à définir dans Webstudio (Settings de la page → Attributes → `data-page`) :
 
-| Classe body      | Script exécuté          |
-| ---------------- | ----------------------- |
-| `body--home`     | `src/pages/home.js`     |
-| `body--projects` | `src/pages/projects.js` |
-| `body--project`  | `src/pages/project.js`  |
-| `body--contact`  | `src/pages/contact.js`  |
+| Attribut body            | Script exécuté          |
+| ------------------------ | ----------------------- |
+| `data-page="home"`       | `src/pages/home.js`     |
+| `data-page="projects"`   | `src/pages/projects.js` |
+| `data-page="project"`    | `src/pages/project.js`  |
+| `data-page="contact"`    | `src/pages/contact.js`  |
 
 La transition entre pages (`initPageTransition`) s'exécute sur **toutes** les pages.
 

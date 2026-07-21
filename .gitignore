@@ -4,3 +4,4 @@ node_modules
 .env
 .eslintcache
 yarn-error.log
+.claude

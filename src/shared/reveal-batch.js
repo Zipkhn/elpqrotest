@@ -24,7 +24,7 @@ export default function initRevealBatch(selector) {
       gsap.set(batch, { opacity: 0, y: 100, overwrite: true }),
   })
 
-  ScrollTrigger.addEventListener('refreshInit', () =>
-    gsap.set('.image', { y: 0 })
-  )
+  ScrollTrigger.addEventListener('refreshInit', () => {
+    if (document.querySelector('.image')) gsap.set('.image', { y: 0 })
+  })
 }

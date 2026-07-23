@@ -1,16 +1,226 @@
-// tag-cloud-magnetic.js — nuage de tags organique : flottement continu +
-// magnétisme au survol. Cible `#nuage` et ses `.tag` (avec data-w, --x/--y).
+// tag-cloud-magnetic.js — nuage de tags organique branché sur Hygraph.
+// 1. Fetch des catégories (title + slug + nb de projets).
+// 2. Génération automatique des `.tag` dans `#nuage` : positions (--x/--y),
+//    poids (data-w, selon le nb de projets), et lien vers /categories/[slug].
+// 3. Animation : flottement continu + magnétisme au survol (GSAP).
 // Respecte prefers-reduced-motion et le mode compact (mobile / sans hover).
 import { gsap } from '../lib/gsap.js'
+import { fetchCategories } from '../lib/hygraph.js'
 
-export default function initTagCloudMagnetic() {
+// Base d'URL d'une page catégorie, PAR LANGUE. Le slug (ex. "wood") est
+// partagé FR/EN ; seul le segment de chemin change selon la langue de la page.
+//   EN → /category/wood     FR → /categorie/wood
+const CATEGORY_BASE_BY_LANG = { en: '/category', fr: '/categorie' }
+
+// Langue courante lue sur <html lang="…"> (posée par Webstudio selon la locale).
+// Si un jour le routing FR utilise un préfixe (ex. /fr/…), il suffira d'ajuster ici.
+function categoryBase() {
+  const lang = (document.documentElement.lang || 'en').toLowerCase()
+  return lang.startsWith('fr')
+    ? CATEGORY_BASE_BY_LANG.fr
+    : CATEGORY_BASE_BY_LANG.en
+}
+
+export default async function initTagCloudMagnetic() {
   const nuage = document.getElementById('nuage')
   if (!nuage) return
 
+  // ── Données : on remplit #nuage depuis Hygraph. En cas d'échec réseau,
+  //    on garde ce qui est déjà dans le DOM (fallback éventuel de l'embed).
+  try {
+    const categories = await fetchCategories()
+    if (categories.length) buildTags(nuage, categories)
+  } catch (err) {
+    console.warn('[nuage] fetch Hygraph échoué, fallback DOM :', err.message)
+  }
+
+  animate(nuage)
+}
+
+/* ====================================================================
+   GÉNÉRATION DES TAGS
+   ==================================================================== */
+
+// Hash déterministe d'une chaîne → entier 32 bits (pour un placement stable
+// d'un chargement à l'autre : même catégorie = même position/poids).
+function hashStr(s) {
+  let h = 1779033703 ^ s.length
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h ^ s.charCodeAt(i), 3432918353)
+    h = (h << 13) | (h >>> 19)
+  }
+  return (h ^ (h >>> 16)) >>> 0
+}
+
+// PRNG déterministe (mulberry32) : renvoie une fonction () => [0,1).
+function rng(seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// Attribue un poids 3→5 à chaque catégorie (minimum 3 = plus de mots minuscules).
+// Si des projets sont liés : rang par nombre de projets (les plus fournies
+// sont les plus grosses). Sinon : distribution déterministe par slug.
+function weightResolver(categories) {
+  const max = Math.max(0, ...categories.map((c) => c.count))
+  if (max > 0) {
+    const ranked = [...categories].sort((a, b) => b.count - a.count)
+    const weights = {}
+    const n = ranked.length
+    ranked.forEach((c, i) => {
+      const p = n > 1 ? i / (n - 1) : 0 // 0 (plus fournie) → 1 (moins)
+      weights[c.slug] = p < 0.12 ? 5 : p < 0.4 ? 4 : 3
+    })
+    return (c) => weights[c.slug]
+  }
+  // Pas encore de projets liés : on varie les tailles pour un vrai effet nuage.
+  return (c) => {
+    const r = rng(hashStr(c.slug))()
+    return r < 0.12 ? 5 : r < 0.4 ? 4 : 3
+  }
+}
+
+// Répartit les catégories sur une grille jitterée (positions en % de #nuage),
+// en mélangeant l'ordre des cellules pour éviter un rendu aligné/alphabétique.
+function layout(categories) {
+  const n = categories.length
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n * 1.7))) // ratio paysage
+  const rows = Math.max(1, Math.ceil(n / cols))
+  const MX = [10, 90] // marges horizontales en %
+  const MY = [15, 85] // marges verticales en %
+
+  const cells = []
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) cells.push({ r, c })
+
+  // Mélange déterministe des cellules (seed fixe → stable au rechargement)
+  const shuffle = rng(0x9e3779b9)
+  for (let i = cells.length - 1; i > 0; i--) {
+    const j = Math.floor(shuffle() * (i + 1))
+    ;[cells[i], cells[j]] = [cells[j], cells[i]]
+  }
+
+  const cw = (MX[1] - MX[0]) / cols
+  const ch = (MY[1] - MY[0]) / rows
+
+  return categories.map((cat, i) => {
+    const { r, c } = cells[i]
+    const cx = MX[0] + cw * (c + 0.5)
+    const cy = MY[0] + ch * (r + 0.5)
+    // Jitter léger à l'intérieur de la cellule, stable par slug (l'anti-
+    // chevauchement fera l'espacement fin ensuite, donc on reste modéré ici).
+    const jit = rng(hashStr(cat.slug))
+    const x = cx + (jit() - 0.5) * cw * 0.4
+    const y = cy + (jit() - 0.5) * ch * 0.45
+    return { ...cat, x: +x.toFixed(2), y: +y.toFixed(2) }
+  })
+}
+
+function buildTags(nuage, categories) {
+  const positioned = layout(categories)
+  const weightOf = weightResolver(categories)
+
+  nuage.textContent = '' // on vide les éventuels placeholders
+  const frag = document.createDocumentFragment()
+
+  positioned.forEach((cat) => {
+    const a = document.createElement('a')
+    a.className = 'tag'
+    a.dataset.w = String(weightOf(cat))
+    // Deux couleurs d'accent au survol (varie l'ambiance), réparties par slug
+    a.dataset.cluster =
+      rng(hashStr(cat.slug) ^ 0x55)() < 0.5 ? 'digital' : 'image'
+    a.style.setProperty('--x', `${cat.x}%`)
+    a.style.setProperty('--y', `${cat.y}%`)
+    a.setAttribute('href', `${categoryBase()}/${cat.slug}`)
+
+    const span = document.createElement('span')
+    span.textContent = cat.title
+    a.appendChild(span)
+    frag.appendChild(a)
+  })
+
+  nuage.appendChild(frag)
+}
+
+// Anti-chevauchement : on mesure la vraie boîte de chaque tag (largeur/hauteur
+// réelles selon le texte) puis on écarte itérativement les paires qui se
+// recouvrent, le long de l'axe de moindre recouvrement. Les positions finales
+// sont réécrites dans --x/--y (en %). À lancer une fois, en desktop, quand
+// #nuage a sa taille définitive et que les tags sont dans le DOM.
+function resolveOverlaps(nuage, tags, { pad = 10, iterations = 120 } = {}) {
+  const box = nuage.getBoundingClientRect()
+  const W = box.width,
+    H = box.height
+  if (!W || !H) return
+
+  const marginX = 0.04 * W
+  const marginY = 0.06 * H
+
+  const items = tags.map((el) => {
+    const b = el.getBoundingClientRect()
+    return {
+      el,
+      hw: b.width / 2 + pad, // demi-largeur + marge de respiration
+      hh: b.height / 2 + pad,
+      x: (parseFloat(el.style.getPropertyValue('--x')) / 100) * W,
+      y: (parseFloat(el.style.getPropertyValue('--y')) / 100) * H,
+    }
+  })
+
+  for (let it = 0; it < iterations; it++) {
+    let moved = false
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i],
+          b = items[j]
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const overlapX = a.hw + b.hw - Math.abs(dx)
+        const overlapY = a.hh + b.hh - Math.abs(dy)
+        if (overlapX > 0 && overlapY > 0) {
+          // On repousse selon l'axe où le recouvrement est le plus faible
+          if (overlapX < overlapY) {
+            const push = (overlapX / 2) * (dx < 0 ? -1 : 1)
+            a.x -= push
+            b.x += push
+          } else {
+            const push = (overlapY / 2) * (dy < 0 ? -1 : 1)
+            a.y -= push
+            b.y += push
+          }
+          moved = true
+        }
+      }
+    }
+    // On garde tout le monde dans le cadre (avec sa demi-taille)
+    for (const p of items) {
+      p.x = Math.max(marginX + p.hw, Math.min(W - marginX - p.hw, p.x))
+      p.y = Math.max(marginY + p.hh, Math.min(H - marginY - p.hh, p.y))
+    }
+    if (!moved) break
+  }
+
+  for (const p of items) {
+    p.el.style.setProperty('--x', `${((p.x / W) * 100).toFixed(2)}%`)
+    p.el.style.setProperty('--y', `${((p.y / H) * 100).toFixed(2)}%`)
+  }
+}
+
+/* ====================================================================
+   ANIMATION (flottement + magnétisme) — inchangée dans l'esprit,
+   s'applique aux `.tag` présents dans #nuage.
+   ==================================================================== */
+function animate(nuage) {
   const reduceMotion = window.matchMedia(
     '(prefers-reduced-motion: reduce)'
   ).matches
-  const tags = gsap.utils.toArray('.tag')
+  const tags = gsap.utils.toArray('#nuage .tag')
   if (!tags.length) return
 
   // Exécute `action` la première fois que le nuage entre dans le viewport (25%).
@@ -54,6 +264,10 @@ export default function initTagCloudMagnetic() {
 
   function initDesktop() {
     gsap.set(tags, { x: 0, y: 0, xPercent: -50, yPercent: -50 })
+
+    // Écarte les mots qui se chevauchent (mesure réelle des boîtes) avant
+    // de figer les centres au repos.
+    resolveOverlaps(nuage, tags)
 
     // Centres "au repos" (repère du nuage), recalculés au resize
     let centres = []

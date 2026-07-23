@@ -32,4 +32,4 @@ window.Webstudio.onReady(() => {
   if (init) init()
 })
 
-console.log('Elparo bundle loaded from local')
+console.log('Elparo bundle loaded from local 23/07')

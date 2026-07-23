@@ -1,4 +1,15 @@
 /* ***********************************************************************
+   HEADER — flou d'arrière-plan au scroll.
+   Posé ici (CSS global du bundle) plutôt que dans un embed par page,
+   pour que l'effet s'applique partout (home, categories, project…) et
+   pas seulement sur les pages où l'embed a été ajouté à la main.
+   *********************************************************************** */
+.header {
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+/* ***********************************************************************
    TRANSITION entre pages (rideau .transition)
    *********************************************************************** */
 .transition_div {

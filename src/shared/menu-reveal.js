@@ -85,14 +85,6 @@ const MENU_STYLES = `
     text-decoration: none !important;
     color: inherit !important;
   }
-
-  /* Bouton de fermeture (X) : la classe Webstudio le verrouille à 32px → on
-     l'agrandit ici (seul point qui doit rester dans le bundle : la contrainte
-     est sur le bouton, pas sur le SVG). Le SVG, lui, se met à l'échelle tout
-     seul grâce à SON PROPRE viewBox (défini dans l'embed Webstudio) → on ne
-     touche plus au SVG en JS, rien n'est éparpillé. */
-  .w-dialog-content .w-close-button { width: 3.5rem !important; height: 3.5rem !important; }
-  .w-dialog-content .w-close-button svg { width: 100% !important; height: 100% !important; }
 `
 
 function injectMenuStyles() {

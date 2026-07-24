@@ -35,7 +35,10 @@ export default function initNavbarColor() {
     // premiers pixels en haut comme zone d'intersection (= là où est la navbar).
     io = new IntersectionObserver(
       (entries) => setWhite(entries[0].isIntersecting),
-      { rootMargin: `0px 0px ${-(window.innerHeight - navH)}px 0px`, threshold: 0 }
+      {
+        rootMargin: `0px 0px ${-(window.innerHeight - navH)}px 0px`,
+        threshold: 0,
+      }
     )
     io.observe(cloud)
   }

@@ -43,16 +43,15 @@ export default function initMenuReveal() {
 
 // CSS du menu — injecté une seule fois. Trois blocs :
 //
-// 1) FERMETURE (inverse de l'ouverture). Les volets REMONTENT de bas en haut :
-//    scaleY 1→0 avec transform-origin en haut → le bas du volet remonte vers le
-//    haut. AUCUN stagger entre les volets : comme ils sont côte à côte, tout
-//    décalage se lirait « gauche → droite ». Ils montent donc TOUS ENSEMBLE
-//    pour un vrai « de bas en haut ». Durées :
-//      • liens : s'effacent en premier vers le haut (0.28s) ; contenu monté 0.3s.
-//      • volets : remontent ensuite, ensemble (0.45s, petit délai 0.1s pour
-//        laisser les liens partir en premier).
-//      • overlay : maintenu monté 0.6s (> 0.1 + 0.45) pour laisser finir les
-//        volets avant que Radix ne démonte le portail.
+// 1) FERMETURE. Chaque volet GLISSE vers le haut (translateY 0 → -100%) et sort
+//    par le haut, L'UN APRÈS L'AUTRE (volet 1 → 2 → 3 via des animation-delay
+//    croissants). Le glissement vertical rend le mouvement « vers le haut »
+//    sans ambiguïté (contrairement à un scaleY qui se lisait horizontalement).
+//    Durées :
+//      • liens : s'effacent en premier (0.28s) ; contenu monté 0.3s.
+//      • volets : glissent ensuite (0.5s), décalés 0.1 / 0.24 / 0.38.
+//      • overlay : maintenu monté 0.95s (> 0.38 + 0.5) pour laisser finir le
+//        dernier volet avant que Radix ne démonte le portail.
 //    NB : Radix retarde le démontage tant qu'une animation CSS tourne sur
 //    l'élément qu'il gère → `@keyframes wsMenuHold` (vide) sert juste à ça.
 //
@@ -67,13 +66,14 @@ const MENU_STYLES = `
   .w-dialog-content[data-state="closed"] .w-close-button {
     animation: wsMenuLinkOut 0.28s ease forwards;
   }
-  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.6s linear forwards; }
+  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.95s linear forwards; }
   .w-dialog-overlay[data-state="closed"] .menu_dragger {
-    transform-origin: top center;
-    animation: wsMenuVoletOut 0.45s cubic-bezier(0.7, 0, 0.84, 0) forwards;
-    animation-delay: 0.1s; /* uniforme : les 3 volets remontent ENSEMBLE (de bas en haut) */
+    animation: wsMenuVoletUp 0.5s cubic-bezier(0.7, 0, 0.84, 0) forwards;
   }
-  @keyframes wsMenuVoletOut { to { transform: scaleY(0); } }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(1) { animation-delay: 0.1s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(2) { animation-delay: 0.24s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(3) { animation-delay: 0.38s; }
+  @keyframes wsMenuVoletUp { from { transform: translateY(0); } to { transform: translateY(-100%); } }
   @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(-20px); } }
   @keyframes wsMenuHold { to {} }
 

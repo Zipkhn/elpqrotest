@@ -8,8 +8,18 @@
 //         └ .menu_dragger × 3         → les VOLETS (fond gris du menu)
 //   .w-dialog-content                 → liens de nav (Projects, Categories, …) + bouton X
 //
-// Effet : au clic, les 3 volets tombent en rideau l'un après l'autre (même
+// OUVERTURE : au clic, les 3 volets tombent en rideau l'un après l'autre (même
 // esprit que les volets orange du scroll-text), puis les liens se révèlent.
+// Faite en GSAP au montage (voir playOpen).
+//
+// FERMETURE : animation inverse (liens qui sortent, puis volets qui se
+// rétractent en ordre inverse). Elle NE PEUT PAS être en GSAP : Radix démonte
+// le portail du DOM en ~30ms dès la fermeture, sans attendre. En revanche Radix
+// (via son composant Presence) RETARDE le démontage tant qu'une **animation
+// CSS** tourne sur l'élément qu'il gère (`[data-state="closed"]`). On injecte
+// donc des keyframes CSS de fermeture (voir CLOSE_STYLES) : Radix attend leur
+// fin avant de démonter. Pas d'interception fragile des clics (X / overlay /
+// Échap) — Radix coordonne tout seul.
 //
 // Radix (dé)monte tout le portail à chaque ouverture → on guette l'apparition
 // de .menu_draggers via un MutationObserver (même pattern de résilience que le
@@ -24,10 +34,46 @@ import { gsap } from '../lib/gsap.js'
 let observer
 
 export default function initMenuReveal() {
+  injectCloseStyles()
   observer?.disconnect()
   observer = new MutationObserver(handleMutations)
   observer.observe(document.body, { childList: true, subtree: true })
   handleMutations() // au cas (rare) où le menu serait déjà monté à l'init
+}
+
+// CSS de FERMETURE — injecté une seule fois. Les durées :
+//  • liens : sortent en premier (0.28s) ; le contenu reste monté 0.3s.
+//  • volets : se rétractent APRÈS, en ordre INVERSE de l'ouverture
+//    (volet 3 → 2 → 1) via des animation-delay décroissants.
+//  • overlay : maintenu monté 0.9s (marge > 0.39 + 0.45) pour que le dernier
+//    volet finisse avant que Radix ne démonte.
+// `@keyframes wsMenuHold` (vide) ne sert qu'à donner à Radix une animation à
+// attendre sur l'overlay/le contenu.
+const CLOSE_STYLES = `
+  .w-dialog-content[data-state="closed"] { animation: wsMenuHold 0.3s linear forwards; }
+  .w-dialog-content[data-state="closed"] a,
+  .w-dialog-content[data-state="closed"] .w-close-button {
+    animation: wsMenuLinkOut 0.28s ease forwards;
+  }
+  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.9s linear forwards; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger {
+    transform-origin: top center;
+    animation: wsMenuVoletOut 0.45s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+  }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(3) { animation-delay: 0.15s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(2) { animation-delay: 0.27s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(1) { animation-delay: 0.39s; }
+  @keyframes wsMenuVoletOut { to { transform: scaleY(0); } }
+  @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(30px); } }
+  @keyframes wsMenuHold { to {} }
+`
+
+function injectCloseStyles() {
+  if (document.getElementById('menu-reveal-close')) return
+  const style = document.createElement('style')
+  style.id = 'menu-reveal-close'
+  style.textContent = CLOSE_STYLES
+  document.head.appendChild(style)
 }
 
 function handleMutations() {

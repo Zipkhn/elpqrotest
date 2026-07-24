@@ -43,14 +43,12 @@
   .w-dialog-content[data-state="closed"] .w-close-button {
     animation: wsMenuLinkOut 0.28s ease forwards;
   }
-  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.9s linear forwards; }
+  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.6s linear forwards; }
   .w-dialog-overlay[data-state="closed"] .menu_dragger {
     transform-origin: top center;
     animation: wsMenuVoletOut 0.45s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+    animation-delay: 0.1s; /* uniforme : les 3 volets remontent ENSEMBLE (de bas en haut) */
   }
-  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(1) { animation-delay: 0.15s; }
-  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(2) { animation-delay: 0.27s; }
-  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(3) { animation-delay: 0.39s; }
   @keyframes wsMenuVoletOut { to { transform: scaleY(0); } }
   @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(-20px); } }
   @keyframes wsMenuHold { to {} }

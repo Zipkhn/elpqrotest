@@ -14,32 +14,32 @@ export default function initScrollText() {
   mm?.revert() // idempotence : tue les triggers/tweens de l'instance précédente
   mm = gsap.matchMedia()
 
-  // La SEULE différence desktop/mobile est la hauteur INITIALE du rideau.
-  // Desktop : la photo about fait ~70vh → 240vh la couvre largement.
-  // Mobile : la photo est en portrait plein cadre (~160vh de haut), donc 240vh
-  // ne recouvre que son bas → le reveal « ne prenait pas la photo » en entier.
-  // ~307vh sont nécessaires pour monter jusqu'au haut de la photo ; 310vh laisse
-  // une petite marge tout en restant sous le bas du slider. À ajuster si la
-  // hauteur de la photo change dans Webstudio.
-  const build = (startHeight) => {
-    gsap.set('.scroll_effect_text_item', { height: startHeight })
+  // build({ height, start, end }) — deux réglages indépendants :
+  //
+  //  • height = hauteur INITIALE du rideau → la COUVERTURE.
+  //      Desktop : la photo about fait ~70vh → 240vh la couvre largement.
+  //      Mobile : la photo est en portrait plein cadre (~160vh), donc il faut
+  //      plus haut pour la recouvrir en entier. À ajuster si la hauteur de la
+  //      photo change dans Webstudio.
+  //
+  //  • start / end = la PLAGE de scroll sur laquelle les volets se rétractent
+  //      → la VITESSE des volets par rapport au scroll.
+  //      Plage plus COURTE = volets plus RAPIDES que le scroll : l'image se
+  //      dévoile plus tôt, pendant qu'elle est encore bien en vue.
+  //      >> Pour ACCÉLÉRER les volets : MONTE le 2e nombre de `end` (140→200→…).
+  //      >> Pour les RALENTIR : baisse-le.
+  //      (start : 2e nombre = où l'anim démarre dans la fenêtre ; monter = plus tôt.)
+  //      Mets `markers: true` ci-dessous pour visualiser start/end au réglage.
+  const build = ({ height, start, end }) => {
+    gsap.set('.scroll_effect_text_item', { height })
 
     const tlScroll = gsap.timeline({
       scrollTrigger: {
         trigger: '.scroll_effect_text',
-        // start : le 2e nombre = où l'anim DÉMARRE dans la fenêtre (% de la
-        // hauteur). 'bottom' (=100%) démarrait trop tard. Plus tu montes le %,
-        // plus ça démarre tôt. À ajuster avec les markers.
-        start: '-100% 125%',
-        // end : le 2e nombre = où l'anim se TERMINE dans la fenêtre.
-        // 110% finissait ~200px trop tard (colonnes encore inégales quand la
-        // section est en haut). ~137% fait finir la rétraction pile quand le
-        // haut des colonnes atteint le haut de la fenêtre. À ajuster avec les
-        // markers ci-dessous : monte le % pour finir plus tôt, baisse-le pour
-        // finir plus tard.
-        end: '0% 140%',
+        start,
+        end,
         scrub: 0.5, // moins de latence que 1 → l'anim colle mieux au scroll
-        markers: false, // ⚠️ TEMPORAIRE : à retirer une fois le réglage validé
+        markers: false, // ⚠️ passe à true pour régler start/end visuellement
       },
     })
 
@@ -54,6 +54,17 @@ export default function initScrollText() {
 
   // Les callbacks matchMedia sont automatiquement « revert » au changement de
   // breakpoint : pas d'empilement entre desktop et mobile.
-  mm.add('(min-width: 768px)', () => build('240vh')) // desktop : inchangé
-  mm.add('(max-width: 767px)', () => build('310vh')) // mobile : couvre la photo entière
+
+  // Desktop : inchangé.
+  mm.add('(min-width: 768px)', () =>
+    build({ height: '240vh', start: '-100% 125%', end: '0% 140%' })
+  )
+
+  // Mobile : rideau plus haut (couvre la photo entière) ET plage de scroll plus
+  // courte (end 140 → 200) → les volets descendent plus vite, l'image se voit
+  // en entier. Ajuste `end` (2e nombre) pour la vitesse, `height` pour la
+  // couverture.
+  mm.add('(max-width: 767px)', () =>
+    build({ height: '275vh', start: '-100% 125%', end: '0% 170%' })
+  )
 }

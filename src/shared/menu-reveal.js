@@ -87,8 +87,10 @@ const MENU_STYLES = `
   }
 
   /* Bouton de fermeture (X) : la classe Webstudio le verrouille à 32px → on
-     l'agrandit. Le SVG suit à 100% (son viewBox est posé en JS, cf.
-     sizeCloseButton, sinon le X ne se met pas à l'échelle). */
+     l'agrandit ici (seul point qui doit rester dans le bundle : la contrainte
+     est sur le bouton, pas sur le SVG). Le SVG, lui, se met à l'échelle tout
+     seul grâce à SON PROPRE viewBox (défini dans l'embed Webstudio) → on ne
+     touche plus au SVG en JS, rien n'est éparpillé. */
   .w-dialog-content .w-close-button { width: 3.5rem !important; height: 3.5rem !important; }
   .w-dialog-content .w-close-button svg { width: 100% !important; height: 100% !important; }
 `
@@ -104,8 +106,6 @@ function injectMenuStyles() {
 function handleMutations() {
   const draggers = document.querySelector('.menu_draggers')
   if (!draggers) return // menu fermé : Radix n'a rien monté, rien à faire
-
-  sizeCloseButton()
 
   // 1. Pré-masque les VOLETS dès que le conteneur apparaît. Le callback d'un
   //    MutationObserver s'exécute avant le prochain paint, donc poser scaleY:0
@@ -132,19 +132,6 @@ function handleMutations() {
     draggers.dataset.revealed = '1'
     playOpen(draggers, reveal)
   }
-}
-
-// Le SVG du X n'a pas de viewBox → sans lui, agrandir le bouton n'agrandit pas
-// le tracé (il reste ~12px). On pose un viewBox cadré sur le X et on retire les
-// width/height fixes pour que le CSS (100%) le mette à l'échelle. Le SVG est
-// recréé par Radix à chaque ouverture → le flag dataset repart de zéro.
-function sizeCloseButton() {
-  const svg = document.querySelector('.w-close-button svg')
-  if (!svg || svg.dataset.sized) return
-  svg.dataset.sized = '1'
-  if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', '0 0 15.5 15.5')
-  svg.removeAttribute('width')
-  svg.removeAttribute('height')
 }
 
 // Liens de nav + bouton de fermeture (les éléments qui « remontent » après les volets).

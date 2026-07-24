@@ -5,6 +5,7 @@ import initSliderMobile from '../components/slider-mobile.js'
 import initTagCloudGrid from '../components/tag-cloud-grid.js'
 import initTagCloudMagnetic from '../components/tag-cloud-magnetic.js'
 import initFooter from '../shared/footer.js'
+import initNavbarColor from '../shared/navbar-color.js'
 import initProjectHover from '../shared/project-hover.js'
 import initRevealBatch from '../shared/reveal-batch.js'
 
@@ -21,6 +22,7 @@ export default function home() {
     ['scrollText', initScrollText],
     ['tagCloudGrid', initTagCloudGrid],
     ['tagCloudMagnetic', initTagCloudMagnetic],
+    ['navbarColor', initNavbarColor],
     ['revealBatch', () => initRevealBatch('.projetFromProjets')],
   ]
   for (const [name, fn] of inits) {

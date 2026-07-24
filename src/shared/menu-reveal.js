@@ -34,22 +34,32 @@ import { gsap } from '../lib/gsap.js'
 let observer
 
 export default function initMenuReveal() {
-  injectCloseStyles()
+  injectMenuStyles()
   observer?.disconnect()
   observer = new MutationObserver(handleMutations)
   observer.observe(document.body, { childList: true, subtree: true })
   handleMutations() // au cas (rare) où le menu serait déjà monté à l'init
 }
 
-// CSS de FERMETURE — injecté une seule fois. Les durées :
-//  • liens : sortent en premier (0.28s) ; le contenu reste monté 0.3s.
-//  • volets : se rétractent APRÈS, en ordre INVERSE de l'ouverture
-//    (volet 3 → 2 → 1) via des animation-delay décroissants.
-//  • overlay : maintenu monté 0.9s (marge > 0.39 + 0.45) pour que le dernier
-//    volet finisse avant que Radix ne démonte.
-// `@keyframes wsMenuHold` (vide) ne sert qu'à donner à Radix une animation à
-// attendre sur l'overlay/le contenu.
-const CLOSE_STYLES = `
+// CSS du menu — injecté une seule fois. Trois blocs :
+//
+// 1) FERMETURE (inverse de l'ouverture). Les volets REMONTENT : scaleY 1→0 avec
+//    transform-origin en haut → le bas du volet remonte vers le haut. Ordre du
+//    stagger identique à l'ouverture (volet 1 → 2 → 3) pour ne pas donner une
+//    impression de « droite → gauche ». Durées :
+//      • liens : s'effacent en premier vers le haut (0.28s) ; contenu monté 0.3s.
+//      • volets : remontent ensuite (0.45s), décalés 0.15 / 0.27 / 0.39.
+//      • overlay : maintenu monté 0.9s (> 0.39 + 0.45) pour laisser finir le
+//        dernier volet avant que Radix ne démonte le portail.
+//    NB : Radix retarde le démontage tant qu'une animation CSS tourne sur
+//    l'élément qu'il gère → `@keyframes wsMenuHold` (vide) sert juste à ça.
+//
+// 2) Bouton menu : pas d'effet au survol (Webstudio ajoute un fond gris clair
+//    rgb(241,245,249) par défaut sur .w-button:hover → on le remet transparent).
+//
+// 3) Liens du menu : pas de soulignement bleu (les <a> ont le style anchor par
+//    défaut du navigateur ; le texte visible est le <h1> blanc à l'intérieur).
+const MENU_STYLES = `
   .w-dialog-content[data-state="closed"] { animation: wsMenuHold 0.3s linear forwards; }
   .w-dialog-content[data-state="closed"] a,
   .w-dialog-content[data-state="closed"] .w-close-button {
@@ -60,19 +70,28 @@ const CLOSE_STYLES = `
     transform-origin: top center;
     animation: wsMenuVoletOut 0.45s cubic-bezier(0.7, 0, 0.84, 0) forwards;
   }
-  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(3) { animation-delay: 0.15s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(1) { animation-delay: 0.15s; }
   .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(2) { animation-delay: 0.27s; }
-  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(1) { animation-delay: 0.39s; }
+  .w-dialog-overlay[data-state="closed"] .menu_dragger:nth-child(3) { animation-delay: 0.39s; }
   @keyframes wsMenuVoletOut { to { transform: scaleY(0); } }
-  @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(30px); } }
+  @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(-20px); } }
   @keyframes wsMenuHold { to {} }
+
+  .menu-btn:hover { background: transparent !important; }
+
+  .w-dialog-content a,
+  .w-dialog-content a:hover,
+  .w-dialog-content a:visited {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
 `
 
-function injectCloseStyles() {
-  if (document.getElementById('menu-reveal-close')) return
+function injectMenuStyles() {
+  if (document.getElementById('menu-reveal-styles')) return
   const style = document.createElement('style')
-  style.id = 'menu-reveal-close'
-  style.textContent = CLOSE_STYLES
+  style.id = 'menu-reveal-styles'
+  style.textContent = MENU_STYLES
   document.head.appendChild(style)
 }
 

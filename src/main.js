@@ -9,6 +9,7 @@ import contact from './pages/contact.js'
 import home from './pages/home.js'
 import project from './pages/project.js'
 import projects from './pages/projects.js'
+import initMenuReveal from './shared/menu-reveal.js'
 import initPageTransition from './shared/page-transition.js'
 
 const routes = {
@@ -21,6 +22,11 @@ const routes = {
 window.Webstudio.onReady(() => {
   // La transition entre pages est présente partout
   initPageTransition()
+
+  // Le menu plein écran (Dialog Radix) est global : on branche son animation
+  // d'ouverture partout. L'observer ne fait rien tant que .menu_draggers
+  // n'apparaît pas → inoffensif sur les pages sans menu.
+  initMenuReveal()
 
   // Exécute uniquement le script de la page courante.
   // Webstudio pose parfois l'attribut sur un wrapper plutôt que sur <body>,

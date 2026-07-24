@@ -1,17 +1,22 @@
 // menu-reveal.js — animation d'ouverture du menu plein écran (Dialog Radix).
 //
-// Structure Webstudio (montée/démontée par Radix à chaque ouverture) :
+// Structure Webstudio (montée/démontée par Radix à chaque ouverture — quand le
+// menu est fermé, RIEN de tout ça n'est dans le DOM) :
 //   .menu-btn                         → bouton déclencheur (data-state open/closed)
 //   .w-dialog-overlay                 → backdrop
 //     └ .menu_draggers                → conteneur flex (3 colonnes)
 //         └ .menu_dragger × 3         → les VOLETS (fond gris du menu)
 //   .w-dialog-content                 → liens de nav (Projects, Categories, …) + bouton X
 //
-// Effet : au clic sur .menu-btn, les 3 volets tombent en rideau l'un après
-// l'autre (même esprit que les volets orange du scroll-text), puis les liens
-// se révèlent. Comme Radix (dé)monte le contenu à chaque ouverture, on guette
-// l'apparition de .menu_draggers via un MutationObserver (même pattern de
-// résilience que le nuage / le slider mobile) et on rejoue le timeline à neuf.
+// Effet : au clic, les 3 volets tombent en rideau l'un après l'autre (même
+// esprit que les volets orange du scroll-text), puis les liens se révèlent.
+//
+// Radix (dé)monte tout le portail à chaque ouverture → on guette l'apparition
+// de .menu_draggers via un MutationObserver (même pattern de résilience que le
+// nuage / le slider mobile). L'observer réagit au DOM, pas au bouton : peu
+// importe le déclencheur (.menu-btn, dialog-menu…), tant que le portail se
+// monte. Comme Radix crée des éléments NEUFS à chaque fois, les flags posés sur
+// le conteneur repartent naturellement à zéro d'une ouverture à l'autre.
 import { gsap } from '../lib/gsap.js'
 
 // Idempotence : un seul observer pour toute la session, même si l'init se
@@ -20,40 +25,54 @@ let observer
 
 export default function initMenuReveal() {
   observer?.disconnect()
-
-  observer = new MutationObserver(() => {
-    const draggers = document.querySelector('.menu_draggers')
-    // dataset.revealed : garde-fou anti-double-jeu. Radix monte un élément
-    // NEUF à chaque ouverture, donc le flag repart naturellement à zéro.
-    if (draggers && !draggers.dataset.revealed) {
-      draggers.dataset.revealed = '1'
-      playOpen(draggers)
-    }
-  })
+  observer = new MutationObserver(handleMutations)
   observer.observe(document.body, { childList: true, subtree: true })
+  handleMutations() // au cas (rare) où le menu serait déjà monté à l'init
+}
 
-  // Cas où le menu serait déjà ouvert au moment de l'init.
-  const existing = document.querySelector('.menu_draggers')
-  if (existing && !existing.dataset.revealed) {
-    existing.dataset.revealed = '1'
-    playOpen(existing)
+function handleMutations() {
+  const draggers = document.querySelector('.menu_draggers')
+  if (!draggers) return // menu fermé : Radix n'a rien monté, rien à faire
+
+  // 1. Pré-masque les VOLETS dès que le conteneur apparaît. Le callback d'un
+  //    MutationObserver s'exécute avant le prochain paint, donc poser scaleY:0
+  //    ici évite tout flash des volets même si le contenu (liens) se monte un
+  //    tick plus tard.
+  if (!draggers.dataset.prepped) {
+    draggers.dataset.prepped = '1'
+    gsap.set(draggers.querySelectorAll('.menu_dragger'), {
+      transformOrigin: 'top center',
+      scaleY: 0,
+    })
+  }
+
+  // 2. Pré-masque les LIENS dès qu'ils sont là (même raison : pas de flash si
+  //    le contenu arrive après les volets).
+  const reveal = getReveal()
+  if (reveal.length && !draggers.dataset.linksPrepped) {
+    draggers.dataset.linksPrepped = '1'
+    gsap.set(reveal, { autoAlpha: 0, y: 30 })
+  }
+
+  // 3. Joue le timeline UNE SEULE FOIS, quand volets ET liens sont présents.
+  if (!draggers.dataset.revealed && reveal.length) {
+    draggers.dataset.revealed = '1'
+    playOpen(draggers, reveal)
   }
 }
 
-function playOpen(container) {
+// Liens de nav + bouton de fermeture (les éléments qui « remontent » après les volets).
+function getReveal() {
+  const content = document.querySelector('.w-dialog-content')
+  if (!content) return []
+  const links = [...content.querySelectorAll('a')]
+  const closeBtn = content.querySelector('.w-close-button')
+  return [...links, closeBtn].filter(Boolean)
+}
+
+function playOpen(container, reveal) {
   const panels = container.querySelectorAll('.menu_dragger')
   if (!panels.length) return
-
-  const content = document.querySelector('.w-dialog-content')
-  const links = content ? [...content.querySelectorAll('a')] : []
-  const closeBtn = content ? content.querySelector('.w-close-button') : null
-  const reveal = [...links, closeBtn].filter(Boolean)
-
-  // État de départ, posé AVANT le premier rendu pour éviter tout flash :
-  //  • volets écrasés vers le haut (rideau relevé)
-  //  • liens masqués et décalés vers le bas
-  gsap.set(panels, { transformOrigin: 'top center', scaleY: 0 })
-  gsap.set(reveal, { autoAlpha: 0, y: 30 })
 
   const tl = gsap.timeline()
 
@@ -62,7 +81,7 @@ function playOpen(container) {
     scaleY: 1,
     duration: 0.55,
     ease: 'power4.inOut',
-    stagger: 0.12, // >> décalage entre volets : monte pour plus « l'un après l'autre »
+    stagger: 0.12, // >> décalage entre volets : monte pour un effet plus « l'un après l'autre »
   })
 
   // 2. Une fois le rideau presque posé, les liens de nav remontent en fondu.

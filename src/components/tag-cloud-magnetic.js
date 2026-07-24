@@ -21,20 +21,41 @@ function categoryBase() {
     : CATEGORY_BASE_BY_LANG.en
 }
 
-export default async function initTagCloudMagnetic() {
-  const nuage = document.getElementById('nuage')
-  if (!nuage) return
-
-  // ── Données : on remplit #nuage depuis Hygraph. En cas d'échec réseau,
-  //    on garde ce qui est déjà dans le DOM (fallback éventuel de l'embed).
-  try {
-    const categories = await fetchCategories()
-    if (categories.length) buildTags(nuage, categories)
-  } catch (err) {
-    console.warn('[nuage] fetch Hygraph échoué, fallback DOM :', err.message)
+export default function initTagCloudMagnetic() {
+  // #nuage est parfois rendu APRÈS l'exécution de home() : Webstudio hydrate le
+  // DOM côté React, et au moment de l'init `getElementById('nuage')` peut encore
+  // être null. L'ancienne version abandonnait alors sans rien faire (nuage vide
+  // en prod, selon le timing de chargement). On observe donc son apparition et
+  // on construit dès qu'il est là — comme la résilience du slider mobile.
+  let done = false
+  let categoriesPromise = null
+  const ensureCategories = () => {
+    if (!categoriesPromise) categoriesPromise = fetchCategories()
+    return categoriesPromise
   }
 
-  animate(nuage)
+  async function tryBuild() {
+    if (done) return
+    const nuage = document.getElementById('nuage')
+    if (!nuage || nuage.querySelector('.tag')) return // absent, ou déjà peuplé
+    try {
+      const categories = await ensureCategories()
+      // un appel concurrent (mutations rapprochées) a pu construire entre-temps
+      if (done || nuage.querySelector('.tag')) return
+      if (!categories.length) return
+      buildTags(nuage, categories)
+      done = true
+      observer.disconnect()
+      animate(nuage)
+    } catch (err) {
+      console.warn('[nuage] fetch Hygraph échoué, fallback DOM :', err.message)
+    }
+  }
+
+  const observer = new MutationObserver(tryBuild)
+  observer.observe(document.body, { childList: true, subtree: true })
+
+  tryBuild() // cas où #nuage est déjà présent
 }
 
 /* ====================================================================
@@ -348,27 +369,16 @@ function animate(nuage) {
       })
     }
 
-    // 4. Survol : le tag grossit, ses voisins s'effacent un peu
-    const RAYON_VOISIN = 190
-    tags.forEach((el, i) => {
+    // 4. Survol : le tag grossit (les voisins ne changent plus d'opacité).
+    tags.forEach((el) => {
       const inner = el.querySelector('span')
 
       el.addEventListener('mouseenter', () => {
         gsap.to(inner, { scale: 1.06, duration: 0.35, ease: 'power3.out' })
-        tags.forEach((autre, j) => {
-          if (j === i) return
-          const d = Math.hypot(
-            centres[i].x - centres[j].x,
-            centres[i].y - centres[j].y
-          )
-          if (d < RAYON_VOISIN)
-            gsap.to(autre, { opacity: 0.35, duration: 0.35 })
-        })
       })
 
       el.addEventListener('mouseleave', () => {
         gsap.to(inner, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.5)' })
-        gsap.to(tags, { opacity: 1, duration: 0.4 })
       })
     })
   }

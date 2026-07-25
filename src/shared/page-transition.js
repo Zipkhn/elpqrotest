@@ -38,6 +38,55 @@ function animateTransition() {
   })
 }
 
+// Interception des clics sur les liens internes, PAR DÉLÉGATION en phase
+// capture. Deux raisons cruciales :
+//  1) La délégation capte AUSSI les liens montés après l'init (ex. les liens du
+//     menu Radix, ajoutés au DOM à l'ouverture) — un `forEach` sur les <a> à
+//     l'init les ratait.
+//  2) Webstudio publie une app **Remix** : les liens internes déclenchent une
+//     navigation **client-side (SPA)**, et `Webstudio.onReady` ne re-tourne PAS
+//     sur ces changements de route → `initPageTransition` ne rejoue pas → le
+//     rideau reste figé en position couvrante. En interceptant en capture +
+//     stopImmediatePropagation, on court-circuite le SPA de Remix, puis on
+//     navigue « en dur » (`window.location.href`) → l'intro rejoue proprement.
+function onLinkClick(e) {
+  // Laisse passer : clics modifiés (nouvel onglet), clic droit/milieu.
+  if (
+    e.defaultPrevented ||
+    e.button !== 0 ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.shiftKey ||
+    e.altKey
+  )
+    return
+
+  const link = e.target.closest('a')
+  if (!link) return
+  const href = link.getAttribute('href')
+  if (!href) return
+  // Ignore : ancres, mailto/tel, nouvel onglet, téléchargement.
+  if (
+    href.startsWith('#') ||
+    href.startsWith('mailto:') ||
+    href.startsWith('tel:') ||
+    link.target === '_blank' ||
+    link.hasAttribute('download')
+  )
+    return
+
+  const url = new URL(href, window.location.href)
+  if (url.origin !== window.location.origin) return // lien externe
+  if (url.pathname === window.location.pathname) return // même page
+
+  // Lien interne → on joue le rideau puis navigation DURE (contourne le SPA).
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  animateTransition().then(() => {
+    window.location.href = url.href
+  })
+}
+
 export default function initPageTransition() {
   if (!document.querySelector('.transition')) return
 
@@ -50,18 +99,10 @@ export default function initPageTransition() {
     .querySelector('.transition_div')
     ?.style.setProperty('z-index', '9999', 'important')
 
-  // Intercepte les liens internes pour jouer la transition avant de naviguer
-  document.querySelectorAll('a').forEach((link) => {
-    link.addEventListener('click', (e) => {
-      const href = link.getAttribute('href')
-      if (!href || href.startsWith('#') || href === window.location.pathname)
-        return
-      e.preventDefault()
-      animateTransition().then(() => {
-        window.location.href = href
-      })
-    })
-  })
+  // Un seul écouteur délégué, en capture (removeEventListener d'abord pour
+  // l'idempotence si l'init rejouait).
+  document.removeEventListener('click', onLinkClick, true)
+  document.addEventListener('click', onLinkClick, true)
 
   // Animation d'intro (le rideau se lève)
   gsap.set('.transition', { visibility: 'visible', translateY: 0 })

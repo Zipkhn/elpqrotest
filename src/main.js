@@ -17,6 +17,13 @@ const routes = {
   projects,
   project,
   contact,
+  // Les pages Webstudio `categories` (liste) et `category` (détail d'une
+  // catégorie) affichent la même grille `.projetFromProjets` que `projects` :
+  // on réutilise donc son init (footer + hover + reveal). Sans ces deux
+  // entrées, data-page="categories"/"category" ne matchait aucune route → les
+  // animations de ces pages ne se lançaient pas.
+  categories: projects,
+  category: projects,
 }
 
 window.Webstudio.onReady(() => {

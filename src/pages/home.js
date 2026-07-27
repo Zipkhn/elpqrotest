@@ -1,7 +1,6 @@
 // home.js — page d'accueil
 import initScrollText from '../components/scroll-text.js'
 import initSliderDesktop from '../components/slider-desktop.js'
-import initSliderMobile from '../components/slider-mobile.js'
 import initTagCloudGrid from '../components/tag-cloud-grid.js'
 import initTagCloudMagnetic from '../components/tag-cloud-magnetic.js'
 import initFooter from '../shared/footer.js'
@@ -14,11 +13,16 @@ export default function home() {
   // d'hydratation React de Webstudio…), les suivants tournent quand même.
   // Avant, une exception dans un init stoppait toute la suite — c'est ce qui
   // empêchait le nuage (initTagCloudMagnetic) de se construire en prod.
+  // NB : pas de slider mobile ici. Le carrousel mobile est un embed Webstudio
+  // autonome (scroll-snap natif : .slider > .slider__track > .slide, avec
+  // scroll-snap-type: x mandatory). L'ancien initSliderMobile faisait tourner
+  // un horizontalLoop GSAP sur les mêmes <a> et les décalait de 322px : les
+  // zones cliquables ne tombaient plus sur la bonne image. Deux sliders sur le
+  // même DOM — celui de l'embed suffit.
   const inits = [
     ['footer', initFooter],
     ['projectHover', initProjectHover],
     ['sliderDesktop', initSliderDesktop],
-    ['sliderMobile', initSliderMobile],
     ['scrollText', initScrollText],
     ['tagCloudGrid', initTagCloudGrid],
     ['tagCloudMagnetic', initTagCloudMagnetic],

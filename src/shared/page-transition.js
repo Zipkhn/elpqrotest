@@ -20,8 +20,37 @@ function revealTransition() {
   })
 }
 
+// Webstudio publie une app **Remix** : React hydrate la page ~1s après notre
+// init et RECRÉE les nœuds du rideau → tous les styles inline posés par GSAP
+// (visibility:hidden, translateY:-100vh) sont effacés, le rideau repart à son
+// état initial « couvrant » pendant quelques frames, alors que l'intro est
+// finie depuis longtemps. C'était le flash noir après le chargement (« le menu
+// qui s'affiche entre deux transitions »).
+//
+// Un style INLINE se fait effacer par l'hydratation ; une règle CSS dans
+// <head>, non — et elle s'applique aussi aux nœuds recréés. On verrouille donc
+// le rideau en CSS dès que l'intro est finie, et on déverrouille juste avant
+// de le rejouer. Le `.transition` est ciblé en plus du parent car GSAP pose
+// `visibility:visible` en inline sur les volets, ce qui battrait un `hidden`
+// hérité du parent.
+const DONE_STYLE_ID = 'ws-transition-done'
+
+function lockCurtainHidden() {
+  if (document.getElementById(DONE_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = DONE_STYLE_ID
+  style.textContent =
+    '.transition_div,.transition_div .transition{visibility:hidden!important;}'
+  document.head.appendChild(style)
+}
+
+function unlockCurtain() {
+  document.getElementById(DONE_STYLE_ID)?.remove()
+}
+
 function animateTransition() {
   return new Promise((resolve) => {
+    unlockCurtain()
     gsap.set('.transition', { visibility: 'visible', translateY: '-100vh' })
     const tl = gsap.timeline({ onComplete: resolve })
     tl.fromTo(
@@ -105,8 +134,10 @@ export default function initPageTransition() {
   document.addEventListener('click', onLinkClick, true)
 
   // Animation d'intro (le rideau se lève)
+  unlockCurtain()
   gsap.set('.transition', { visibility: 'visible', translateY: 0 })
   revealTransition().then(() => {
     gsap.set('.transition', { visibility: 'hidden' })
+    lockCurtainHidden() // survit à l'hydratation Remix (voir plus haut)
   })
 }

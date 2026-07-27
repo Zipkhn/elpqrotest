@@ -318,8 +318,21 @@ function animate(nuage) {
       })
     })
 
-    // 2. Flottement continu : les petits tags dérivent plus vite et plus loin
-    tags.forEach((el) => {
+    // 2. Flottement continu : les petits tags dérivent plus vite et plus loin.
+    //
+    // Ces tweens sont INFINIS (`repeat: -1`). Auparavant ils démarraient ici,
+    // tout de suite : le ticker GSAP réécrivait donc des transformations sur 50
+    // éléments (25 tags + leur span) à chaque frame, EN PERMANENCE — alors que
+    // #nuage est tout en bas de la page et que l'utilisateur regarde le hero.
+    // Cette pression continue sur le compositeur affamait la rastérisation du
+    // reste : sur la home, des vignettes du slider restaient décodées mais
+    // jamais peintes, uniquement sous Chrome (Safari et Firefox ordonnancent
+    // leur rastérisation autrement), et de façon aléatoire d'un chargement à
+    // l'autre — la signature d'une course, pas d'un problème de poids.
+    //
+    // On les crée donc en pause, et un IntersectionObserver ne les fait tourner
+    // que lorsque le nuage est réellement à l'écran.
+    const flottements = tags.map((el) => {
       const w = parseInt(el.dataset.w, 10)
       const inner = el.querySelector('span')
       const amp = gsap.utils.mapRange(1, 5, 14, 5, w)
@@ -332,10 +345,23 @@ function animate(nuage) {
         ease: 'sine.inOut',
         yoyo: true,
         repeat: -1,
+        paused: true,
       })
       // Départ à un point aléatoire du cycle (évite une vague synchronisée)
       flotte.totalTime(gsap.utils.random(0, dur * 2))
+      return flotte
     })
+
+    new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((e) => e.isIntersecting)
+        for (const flotte of flottements) {
+          if (visible) flotte.play()
+          else flotte.pause()
+        }
+      },
+      { threshold: 0 }
+    ).observe(nuage)
 
     // 3. Magnétisme : les tags proches du curseur s'écartent
     function initMagnetisme() {

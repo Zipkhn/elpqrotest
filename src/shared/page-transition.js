@@ -90,11 +90,11 @@ function onLinkClick(e) {
 export default function initPageTransition() {
   if (!document.querySelector('.transition')) return
 
-  // Le rideau DOIT passer au-dessus de tout. Webstudio le laissait à
-  // z-index:1 → il descendait mais restait caché derrière #cloud (z6), la
-  // navbar (z20), les images… donc « transition qui ne couvre rien ». On force
-  // ici pour ne dépendre d'aucun réglage Webstudio (z-index élevé + !important
-  // pour battre la règle Webstudio).
+  // Le rideau DOIT passer au-dessus de tout (navbar, #cloud, images…). La
+  // valeur de référence est désormais dans styles/style.css (z-index:9999) —
+  // elle s'applique dès l'injection du CSS, sans attendre ce JS. Ce
+  // setProperty ne reste qu'en filet de sécurité si une règle Webstudio
+  // publiée plus tard venait à reprendre la main.
   document
     .querySelector('.transition_div')
     ?.style.setProperty('z-index', '9999', 'important')

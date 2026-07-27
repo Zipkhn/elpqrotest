@@ -17,7 +17,13 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 1;
+  /* Le rideau doit couvrir TOUT (navbar z49, #cloud z6, images…).
+     Attention : ce CSS est injecté par le bundle ~100ms après le premier
+     paint, donc il écrase le z-index:60 que Webstudio pose côté serveur. Avec
+     l'ancienne valeur (1), le rideau repassait sous la navbar pendant ~200ms
+     — le temps que initPageTransition() force 9999 en inline — et on voyait
+     le menu passer devant. On met donc directement la valeur finale ici. */
+  z-index: 9999;
   pointer-events: none;
   display: flex;
   align-items: center;

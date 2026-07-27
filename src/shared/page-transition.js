@@ -190,9 +190,31 @@ export default function initPageTransition() {
 
   surveilleRideau()
 
-  // Animation d'intro (le rideau se lève)
+  // Animation d'intro (le rideau se lève).
+  //
+  // `opacity: 0.999` — imperceptible à l'œil, décisif pour Chrome. Chrome
+  // n'effectue PAS la rastérisation de ce qui est intégralement recouvert par
+  // un calque **opaque** (occlusion culling). Le rideau étant plein écran et
+  // parfaitement opaque (`background:#222`), les images qui finissaient de
+  // décoder pendant l'intro n'étaient jamais peintes — et rien ensuite ne les
+  // réinvalidait : sur la home, seules 3 des 7 vignettes du hero apparaissaient,
+  // les autres attendant un survol.
+  //
+  // Ce qui a mis la puce à l'oreille : EN LOCAL le bug n'existe pas. En dev le
+  // CSS du bundle (qui donne son fond au rideau) arrive tard, donc le rideau
+  // reste transparent pendant que les images décodent et Chrome les rastérise
+  // normalement. En prod ce CSS est injecté en ~100ms. Même code, comportement
+  // opposé : la différence n'est pas le code mais le MOMENT où le rideau
+  // devient opaque.
+  //
+  // Une opacité de 0.999 suffit à retirer le calque de la catégorie « opaque »
+  // sans aucune différence visible. Safari et Firefox n'en ont pas besoin.
   unlockCurtain()
-  gsap.set('.transition', { visibility: 'visible', translateY: 0 })
+  gsap.set('.transition', {
+    visibility: 'visible',
+    translateY: 0,
+    opacity: 0.999,
+  })
   return revealTransition().then(() => {
     gsap.set('.transition', { visibility: 'hidden' })
     lockCurtainHidden() // survit à l'hydratation Remix (voir plus haut)

@@ -62,6 +62,7 @@ export default function forceImageRepaint() {
   // Une image qui finit de charger plus tard (lazy, hydratation Remix) n'est
   // couverte par aucun des rappels ci-dessus : on la rattrape à sa arrivée.
   for (const img of images) {
-    if (!img.complete) img.addEventListener('load', () => nudge(), { once: true })
+    if (!img.complete)
+      img.addEventListener('load', () => nudge(), { once: true })
   }
 }

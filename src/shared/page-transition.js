@@ -222,23 +222,21 @@ function joueIntro() {
 
   // Animation d'intro (le rideau se lève).
   //
-  // `opacity: 0.999` — imperceptible à l'œil, décisif pour Chrome. Chrome
-  // n'effectue PAS la rastérisation de ce qui est intégralement recouvert par
-  // un calque **opaque** (occlusion culling). Le rideau étant plein écran et
-  // parfaitement opaque (`background:#222`), les images qui finissaient de
-  // décoder pendant l'intro n'étaient jamais peintes — et rien ensuite ne les
-  // réinvalidait : sur la home, seules 3 des 7 vignettes du hero apparaissaient,
-  // les autres attendant un survol.
+  // `opacity: 0.999` — imperceptible à l'œil. Hypothèse : Chrome ne rastérise
+  // pas ce qui est intégralement recouvert par un calque OPAQUE (occlusion
+  // culling), et une opacité < 1 sort le rideau de cette catégorie.
   //
-  // Ce qui a mis la puce à l'oreille : EN LOCAL le bug n'existe pas. En dev le
-  // CSS du bundle (qui donne son fond au rideau) arrive tard, donc le rideau
-  // reste transparent pendant que les images décodent et Chrome les rastérise
-  // normalement. En prod ce CSS est injecté en ~100ms. Même code, comportement
-  // opposé : la différence n'est pas le code mais le MOMENT où le rideau
-  // devient opaque.
+  // ATTENTION — utilité NON DÉMONTRÉE, à ne pas présenter comme acquise. Le
+  // symptôme (seules 3 des 7 vignettes du hero peintes sous Chrome) a en
+  // réalité disparu quand le styling des images a été retiré côté Webstudio :
+  // leur `min-width: 35vw` les faisait déborder de 467px de chaque côté d'une
+  // fenêtre de 91px, soit sept calques de 1024px de large qui se chevauchaient.
+  // Une fois l'image ramenée à la taille de son conteneur, plus de bug — la
+  // vraie cause était là, pas ici.
   //
-  // Une opacité de 0.999 suffit à retirer le calque de la catégorie « opaque »
-  // sans aucune différence visible. Safari et Firefox n'en ont pas besoin.
+  // Cette ligne est donc conservée à titre de garde-fou peu coûteux, mais si
+  // elle gêne un jour, la retirer et vérifier sur quelques rechargements que
+  // les 7 vignettes tiennent : c'est le test qui tranchera.
   unlockCurtain()
   gsap.set('.transition', {
     visibility: 'visible',

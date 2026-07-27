@@ -84,7 +84,15 @@ const MENU_STYLES = `
      blanc → un fin cadre clair sur tout le pourtour. On fait déborder
      l'overlay d'1px pour que le mélange se fasse gris sur gris.
      !important : la règle Webstudio est réinjectée à l'hydratation React. */
-  .w-dialog-overlay { inset: -1px !important; }
+     width/height à auto sont INDISPENSABLES : Webstudio impose une largeur
+     explicite à l'overlay, et une largeur fixe l'emporte sur le couple
+     left/right. Avec inset seul, l'overlay se décalait de 1px au lieu de
+     s'agrandir — il débordait à gauche et manquait 1px à droite. */
+  .w-dialog-overlay {
+    inset: -1px !important;
+    width: auto !important;
+    height: auto !important;
+  }
 
   .menu-btn:hover { background: transparent !important; }
 

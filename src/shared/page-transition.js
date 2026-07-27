@@ -55,6 +55,50 @@ function unlockCurtain() {
   document.getElementById(DONE_STYLE_ID)?.remove()
 }
 
+// CHIEN DE GARDE — le rideau figé rend la page inutilisable (écran plein).
+// Observé sur certaines pages projet atteintes depuis le slider du hero, de
+// façon intermittente : l'intro ne se joue jamais et le rideau reste couvrant.
+// Non reproduit en test (chargement direct ET clic depuis le hero fonctionnent),
+// donc la cause reste ouverte — mais un visiteur ne doit pas rester bloqué.
+//
+// On vérifie donc tardivement que l'intro a bien eu lieu (le verrou CSS en est
+// la preuve). Sinon on journalise l'état complet pour le diagnostic, puis on
+// débloque. DELAI généreux : l'intro dure ~1,9s, et l'init peut lui-même partir
+// jusqu'à 3s après le chargement si le DOM ne se stabilise pas.
+const WATCHDOG_MS = 6000
+
+function surveilleRideau() {
+  setTimeout(() => {
+    if (document.getElementById(DONE_STYLE_ID)) return // intro terminée : OK
+
+    const panneau = document.querySelector('.transition')
+    if (!panneau) return
+    const style = getComputedStyle(panneau)
+    const couvreEncore =
+      style.visibility === 'visible' &&
+      panneau.getBoundingClientRect().bottom > 1
+    if (!couvreEncore) return
+
+    console.warn(
+      '[transition] rideau figé après %dms — déblocage forcé',
+      WATCHDOG_MS,
+      {
+        url: location.pathname,
+        inlineDuDiv: document
+          .querySelector('.transition_div')
+          ?.getAttribute('style'),
+        volets: [...document.querySelectorAll('.transition')].map(
+          (p) =>
+            getComputedStyle(p).visibility + ' ' + getComputedStyle(p).transform
+        ),
+      }
+    )
+
+    gsap.set('.transition', { visibility: 'hidden' })
+    lockCurtainHidden()
+  }, WATCHDOG_MS)
+}
+
 function animateTransition() {
   return new Promise((resolve) => {
     unlockCurtain()
@@ -143,6 +187,8 @@ export default function initPageTransition() {
   // l'idempotence si l'init rejouait).
   document.removeEventListener('click', onLinkClick, true)
   document.addEventListener('click', onLinkClick, true)
+
+  surveilleRideau()
 
   // Animation d'intro (le rideau se lève)
   unlockCurtain()

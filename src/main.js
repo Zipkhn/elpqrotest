@@ -28,8 +28,10 @@ const routes = {
 }
 
 window.Webstudio.onReady(() => {
-  // La transition entre pages est présente partout
-  initPageTransition()
+  // La transition entre pages est présente partout. Elle résout sa Promise
+  // quand le rideau a fini de se lever, c'est-à-dire quand la page devient
+  // réellement visible — le seul moment où forcer un repaint a un sens.
+  const curtainLifted = initPageTransition()
 
   // Le menu plein écran (Dialog Radix) est global : on branche son animation
   // d'ouverture partout. L'observer ne fait rien tant que .menu_draggers
@@ -45,10 +47,11 @@ window.Webstudio.onReady(() => {
   const init = routes[page]
   if (init) init()
 
-  // En dernier : Chrome laisse parfois des images décodées mais jamais peintes
-  // (voir force-image-repaint.js). Global à toutes les pages — le même défaut
-  // touchait aussi les photos des pages projet.
-  forceImageRepaint()
+  // Chrome laisse parfois des images décodées mais jamais peintes (voir
+  // force-image-repaint.js). Global à toutes les pages — le même défaut
+  // touchait aussi les photos des pages projet. On attend impérativement que le
+  // rideau soit levé : sous le rideau, le repaint est posé dans le vide.
+  curtainLifted.then(forceImageRepaint)
 })
 
 console.log('Elparo bundle loaded from local 23/07')

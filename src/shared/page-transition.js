@@ -123,8 +123,12 @@ function onLinkClick(e) {
   })
 }
 
+// Renvoie une Promise résolue quand le rideau a fini de se lever — le moment où
+// la page devient réellement visible. Tout ce qui dépend de pixels réellement
+// peints (voir force-image-repaint.js) doit attendre ce signal : tant que le
+// rideau couvre l'écran, Chrome ne rastérise pas ce qu'il masque.
 export default function initPageTransition() {
-  if (!document.querySelector('.transition')) return
+  if (!document.querySelector('.transition')) return Promise.resolve()
 
   // Le rideau DOIT passer au-dessus de tout (navbar, #cloud, images…). La
   // valeur de référence est désormais dans styles/style.css (z-index:9999) —
@@ -143,7 +147,7 @@ export default function initPageTransition() {
   // Animation d'intro (le rideau se lève)
   unlockCurtain()
   gsap.set('.transition', { visibility: 'visible', translateY: 0 })
-  revealTransition().then(() => {
+  return revealTransition().then(() => {
     gsap.set('.transition', { visibility: 'hidden' })
     lockCurtainHidden() // survit à l'hydratation Remix (voir plus haut)
   })

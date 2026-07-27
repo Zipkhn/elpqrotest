@@ -25,6 +25,21 @@
 //
 // NB : `opacity` en feuille de style ne peut pas écraser les animations GSAP,
 // qui posent leur opacité en inline — l'inline l'emporte toujours ici.
+// TIMING — critique. Ce nudge doit partir APRÈS que le rideau de transition se
+// soit levé. Chrome ne rastérise pas ce qui est entièrement masqué : tant que
+// le rideau couvre l'écran, la règle est posée dans le vide et ne sert à rien.
+// C'est ce qui rendait le résultat aléatoire d'un rechargement à l'autre (3, 4
+// ou 7 vignettes selon les images ayant décodé avant que le rideau se lève).
+// Voir l'appel dans main.js, branché sur la Promise d'initPageTransition().
+function nudge() {
+  const style = document.createElement('style')
+  style.textContent = 'img{opacity:0.999}'
+  document.head.appendChild(style)
+  // Deux frames : la première applique la règle, la seconde laisse le
+  // compositeur produire l'image avant qu'on retire le style.
+  requestAnimationFrame(() => requestAnimationFrame(() => style.remove()))
+}
+
 export default function forceImageRepaint() {
   const images = [...document.querySelectorAll('img')]
   if (!images.length) return
@@ -34,11 +49,10 @@ export default function forceImageRepaint() {
   )
 
   Promise.all(decoded).then(() => {
-    const style = document.createElement('style')
-    style.textContent = 'img{opacity:0.999}'
-    document.head.appendChild(style)
-    // Deux frames : la première applique la règle, la seconde laisse le
-    // compositeur produire l'image avant qu'on retire le style.
-    requestAnimationFrame(() => requestAnimationFrame(() => style.remove()))
+    nudge()
+    // Second passage : des tuiles se sont vidées spontanément après coup au
+    // cours des tests (7 vignettes peintes, puis 3 sans aucune interaction).
+    // Un rappel tardif rattrape aussi les images arrivées entre-temps.
+    setTimeout(nudge, 900)
   })
 }

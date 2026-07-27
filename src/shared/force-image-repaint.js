@@ -40,6 +40,13 @@ function nudge() {
   requestAnimationFrame(() => requestAnimationFrame(() => style.remove()))
 }
 
+// Un passage unique ne tient pas : Chrome reperd des tuiles APRÈS coup (observé
+// en test — 7 vignettes peintes, puis 3, sans aucune interaction). Et le nudge
+// n'a d'effet que si l'écran est réellement visible au moment où il part.
+// D'où plusieurs passages étalés, plutôt qu'un seul bien placé : c'est peu
+// coûteux (un <style> ajouté puis retiré) et ça ne peut pas « rater la fenêtre ».
+const RAPPELS_MS = [0, 500, 1500, 3000]
+
 export default function forceImageRepaint() {
   const images = [...document.querySelectorAll('img')]
   if (!images.length) return
@@ -49,10 +56,12 @@ export default function forceImageRepaint() {
   )
 
   Promise.all(decoded).then(() => {
-    nudge()
-    // Second passage : des tuiles se sont vidées spontanément après coup au
-    // cours des tests (7 vignettes peintes, puis 3 sans aucune interaction).
-    // Un rappel tardif rattrape aussi les images arrivées entre-temps.
-    setTimeout(nudge, 900)
+    for (const delai of RAPPELS_MS) setTimeout(nudge, delai)
   })
+
+  // Une image qui finit de charger plus tard (lazy, hydratation Remix) n'est
+  // couverte par aucun des rappels ci-dessus : on la rattrape à sa arrivée.
+  for (const img of images) {
+    if (!img.complete) img.addEventListener('load', () => nudge(), { once: true })
+  }
 }

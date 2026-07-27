@@ -30,17 +30,24 @@ function revealTransition() {
 // Un style INLINE se fait effacer par l'hydratation ; une règle CSS dans
 // <head>, non — et elle s'applique aussi aux nœuds recréés. On verrouille donc
 // le rideau en CSS dès que l'intro est finie, et on déverrouille juste avant
-// de le rejouer. Le `.transition` est ciblé en plus du parent car GSAP pose
-// `visibility:visible` en inline sur les volets, ce qui battrait un `hidden`
-// hérité du parent.
+// de le rejouer.
+//
+// `display:none` et surtout PAS `visibility:hidden` : le rideau est un calque
+// composité (position:fixed plein écran, z-index 9999, `will-change:transform`
+// sur les volets). En `visibility:hidden` le calque RESTE dans l'arbre de
+// composition, posé au-dessus du hero — et ce qui est dessous n'est plus
+// réinvalidé quand les images finissent de décoder : sur la home, 4 des 7
+// vignettes du slider ne se peignaient jamais tant qu'on ne survolait pas une
+// vignette (le `style.width` du hover forçait enfin le repaint). Vérifié par
+// contrôle : injecter une règle sans effet ne débloque rien, `display:none`
+// sur .transition_div débloque les 7 immédiatement.
 const DONE_STYLE_ID = 'ws-transition-done'
 
 function lockCurtainHidden() {
   if (document.getElementById(DONE_STYLE_ID)) return
   const style = document.createElement('style')
   style.id = DONE_STYLE_ID
-  style.textContent =
-    '.transition_div,.transition_div .transition{visibility:hidden!important;}'
+  style.textContent = '.transition_div{display:none!important;}'
   document.head.appendChild(style)
 }
 

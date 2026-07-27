@@ -9,6 +9,7 @@ import contact from './pages/contact.js'
 import home from './pages/home.js'
 import project from './pages/project.js'
 import projects from './pages/projects.js'
+import forceImageRepaint from './shared/force-image-repaint.js'
 import initMenuReveal from './shared/menu-reveal.js'
 import initPageTransition from './shared/page-transition.js'
 
@@ -43,6 +44,11 @@ window.Webstudio.onReady(() => {
     document.querySelector('[data-page]')?.dataset.page
   const init = routes[page]
   if (init) init()
+
+  // En dernier : Chrome laisse parfois des images décodées mais jamais peintes
+  // (voir force-image-repaint.js). Global à toutes les pages — le même défaut
+  // touchait aussi les photos des pages projet.
+  forceImageRepaint()
 })
 
 console.log('Elparo bundle loaded from local 23/07')

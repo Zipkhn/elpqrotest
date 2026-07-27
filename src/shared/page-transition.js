@@ -172,8 +172,43 @@ function onLinkClick(e) {
 // peints (voir force-image-repaint.js) doit attendre ce signal : tant que le
 // rideau couvre l'écran, Chrome ne rastérise pas ce qu'il masque.
 export default function initPageTransition() {
-  if (!document.querySelector('.transition')) return Promise.resolve()
+  // L'écouteur de liens ne dépend pas des volets : on le branche tout de suite,
+  // même si le rideau n'est pas encore là.
+  document.removeEventListener('click', onLinkClick, true)
+  document.addEventListener('click', onLinkClick, true)
 
+  if (document.querySelector('.transition')) return joueIntro()
+
+  // VOLETS ABSENTS À L'INIT — ne surtout pas renoncer.
+  //
+  // La porte d'attente de webstudio-utils peut s'ouvrir pendant une accalmie du
+  // DOM, AVANT que Remix ait fini de rendre la page. Les volets arrivent alors
+  // après nous. L'ancienne version retournait ici, et plus rien ne relançait
+  // jamais l'intro : le rideau restait figé en position couvrante, écran plein,
+  // page inutilisable.
+  //
+  // Reproduit en naviguant PAR LE MENU vers /projets/all : `init` avait bien
+  // tourné mais le z-index inline n'était jamais posé — la signature d'un
+  // abandon à cette ligne précise. On attend donc leur apparition.
+  return new Promise((resolve) => {
+    const abandon = setTimeout(() => {
+      observer.disconnect()
+      resolve()
+    }, 5000)
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector('.transition')) return
+      clearTimeout(abandon)
+      observer.disconnect()
+      joueIntro().then(resolve)
+    })
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    })
+  })
+}
+
+function joueIntro() {
   // Le rideau DOIT passer au-dessus de tout (navbar, #cloud, images…). La
   // valeur de référence est désormais dans styles/style.css (z-index:9999) —
   // elle s'applique dès l'injection du CSS, sans attendre ce JS. Ce
@@ -182,11 +217,6 @@ export default function initPageTransition() {
   document
     .querySelector('.transition_div')
     ?.style.setProperty('z-index', '9999', 'important')
-
-  // Un seul écouteur délégué, en capture (removeEventListener d'abord pour
-  // l'idempotence si l'init rejouait).
-  document.removeEventListener('click', onLinkClick, true)
-  document.addEventListener('click', onLinkClick, true)
 
   surveilleRideau()
 

@@ -77,35 +77,6 @@ const MENU_STYLES = `
   @keyframes wsMenuLinkOut { to { opacity: 0; transform: translateY(-20px); } }
   @keyframes wsMenuHold { to {} }
 
-  /* Coins arrondis (fenêtre macOS) : l'overlay est calé à inset:0, donc pile
-     sur le bord du viewport. Or html et body n'ont AUCUNE couleur de fond
-     (rgba(0,0,0,0)) : le blanc visible est celui du navigateur lui-même. À
-     l'arrondi du coin, l'anticrénelage mélange le gris des volets avec ce
-     blanc → un fin cadre clair sur tout le pourtour. On fait déborder
-     l'overlay d'1px pour que le mélange se fasse gris sur gris.
-     !important : la règle Webstudio est réinjectée à l'hydratation React. */
-     width/height à auto sont INDISPENSABLES : Webstudio impose une largeur
-     explicite à l'overlay, et une largeur fixe l'emporte sur le couple
-     left/right. Avec inset seul, l'overlay se décalait de 1px au lieu de
-     s'agrandir — il débordait à gauche et manquait 1px à droite. */
-  .w-dialog-overlay {
-    inset: -1px !important;
-    width: auto !important;
-    height: auto !important;
-  }
-
-  /* Les 3 volets doivent se partager la largeur à parts égales. Sans base flex
-     à 0, la base est lue sur la width (restée à 100%) : le 1er volet prend
-     tout, les 2 autres tombent à 0px et se superposent — le rideau à trois
-     panneaux ne joue plus. Une base a 0 laisse aussi Chrome répartir le pixel
-     résiduel, ce qui supprime les coutures sous-pixel entre volets.
-     STOPGAP : à retirer d'ici le jour où le réglage sera posé dans Webstudio
-     (panneau Style du .menu_dragger : Width auto, Grow 1, Shrink 1, Basis 0). */
-  .menu_draggers .menu_dragger {
-    flex: 1 1 0 !important;
-    width: auto !important;
-  }
-
   .menu-btn:hover { background: transparent !important; }
 
   .w-dialog-content a,

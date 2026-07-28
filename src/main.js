@@ -5,6 +5,7 @@
 //   data-page="home" | "projects" | "project" | "contact"
 import './webstudio-utils.js'
 import './styles/style.css'
+import categories from './pages/categories.js'
 import contact from './pages/contact.js'
 import home from './pages/home.js'
 import project from './pages/project.js'
@@ -18,11 +19,12 @@ const routes = {
   project,
   contact,
   // Les pages Webstudio `categories` (liste) et `category` (détail d'une
-  // catégorie) affichent la même grille `.projetFromProjets` que `projects` :
-  // on réutilise donc son init (footer + hover + reveal). Sans ces deux
-  // entrées, data-page="categories"/"category" ne matchait aucune route → les
+  // catégorie) affichent la même grille `.projetFromProjets` que `projects`.
+  // `categories` a en plus le nuage `#nuage` → module dédié ; `category`
+  // (détail) réutilise tel quel l'init de `projects`. Sans ces deux entrées,
+  // data-page="categories"/"category" ne matchait aucune route → les
   // animations de ces pages ne se lançaient pas.
-  categories: projects,
+  categories,
   category: projects,
 }
 

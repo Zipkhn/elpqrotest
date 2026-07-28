@@ -2,6 +2,21 @@
 // Mutualisé : ce bloc était copié à l'identique dans home / project / projects / contact.
 import { gsap } from '../lib/gsap.js'
 
+// Décalage entre les 3 volets. Volontairement un simple nombre, et SURTOUT pas
+// `{ grid: [1, 3] }` comme avant : cette grille était figée à 3 cellules et se
+// dégradait EN SILENCE dès que le nombre de volets changeait. Quand un <h1>
+// portait aussi la classe `.transition`, GSAP recevait 4 cibles, la 4e passait
+// en 2e ligne de la grille et se retrouvait à la même distance que la 2e —
+// donc au même délai. Le volet de droite se levait exactement avec celui du
+// milieu, sans aucune erreur en console. Un stagger simple échelonne par index,
+// quel que soit le nombre d'éléments.
+//
+// 0.25s et non 0.1 : l'animation dure 1,5s en expo.inOut, une courbe qui laisse
+// le volet quasi immobile pendant les premiers 40% puis le projette d'un coup.
+// À 0,1s d'écart, les trois « coups » se chevauchaient presque entièrement et
+// l'œil ne lisait qu'un seul départ. Valeur esthétique, à ajuster librement.
+const DECALAGE_VOLETS = 0.25
+
 function revealTransition() {
   return new Promise((resolve) => {
     const tl = gsap.timeline({ onComplete: resolve })
@@ -12,7 +27,7 @@ function revealTransition() {
         translateY: '-100vh',
         duration: 1.5,
         delay: 0.2,
-        stagger: { each: 0.1, from: 'start', grid: [1, 3] },
+        stagger: DECALAGE_VOLETS,
         ease: 'expo.inOut',
       },
       0
@@ -110,7 +125,7 @@ function animateTransition() {
       {
         translateY: 0,
         duration: 1,
-        stagger: { each: 0.1, from: 'start', grid: [1, 3] },
+        stagger: DECALAGE_VOLETS,
         ease: 'expo.out',
       },
       0
@@ -169,8 +184,8 @@ function onLinkClick(e) {
 
 // Renvoie une Promise résolue quand le rideau a fini de se lever — le moment où
 // la page devient réellement visible. Tout ce qui dépend de pixels réellement
-// peints (voir force-image-repaint.js) doit attendre ce signal : tant que le
-// rideau couvre l'écran, Chrome ne rastérise pas ce qu'il masque.
+// peints doit attendre ce signal : tant que le rideau couvre l'écran, Chrome ne
+// rastérise pas ce qu'il masque.
 export default function initPageTransition() {
   // L'écouteur de liens ne dépend pas des volets : on le branche tout de suite,
   // même si le rideau n'est pas encore là.

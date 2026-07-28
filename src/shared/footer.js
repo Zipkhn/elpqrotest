@@ -32,9 +32,16 @@ export default function initFooter() {
     .to('.col_footer_1', { height: '90%', ease: 'power3.out' })
     .to('.col_footer_2', { height: '95%', ease: 'power3.out' }, '-=75%')
     .to('.col_footer_3', { height: '100%', ease: 'power3.out' }, '-=60%')
-    .to('.text_footer', {
-      opacity: '100%',
-      stagger: { each: 0.15 },
-      ease: 'power3.out',
-    })
+    // Le texte (h1 + p) ne doit pas attendre la fin des colonnes : il démarre
+    // pendant la montée de col_footer_3 et se joue vite (durée + stagger courts).
+    .to(
+      '.text_footer',
+      {
+        opacity: '100%',
+        duration: 0.25,
+        stagger: { each: 0.06 },
+        ease: 'power2.out',
+      },
+      '-=80%'
+    )
 }

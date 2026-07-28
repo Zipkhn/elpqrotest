@@ -94,6 +94,18 @@ const MENU_STYLES = `
     height: auto !important;
   }
 
+  /* Les 3 volets doivent se partager la largeur à parts égales. Sans base flex
+     à 0, la base est lue sur la width (restée à 100%) : le 1er volet prend
+     tout, les 2 autres tombent à 0px et se superposent — le rideau à trois
+     panneaux ne joue plus. Une base a 0 laisse aussi Chrome répartir le pixel
+     résiduel, ce qui supprime les coutures sous-pixel entre volets.
+     STOPGAP : à retirer d'ici le jour où le réglage sera posé dans Webstudio
+     (panneau Style du .menu_dragger : Width auto, Grow 1, Shrink 1, Basis 0). */
+  .menu_draggers .menu_dragger {
+    flex: 1 1 0 !important;
+    width: auto !important;
+  }
+
   .menu-btn:hover { background: transparent !important; }
 
   .w-dialog-content a,

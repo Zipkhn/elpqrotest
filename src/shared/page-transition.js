@@ -251,6 +251,10 @@ function onLinkClick(e) {
   if (url.origin !== window.location.origin) return // lien externe
   if (url.pathname === window.location.pathname) return // même page
 
+  // Pas de volets dans le DOM → rien à animer. On laisse le lien agir
+  // normalement plutôt que d'imposer 1,5s d'attente sur un rideau inexistant.
+  if (!document.querySelector('.transition')) return
+
   // Lien interne → on joue le rideau puis navigation DURE (contourne le SPA).
   e.preventDefault()
   e.stopImmediatePropagation()
@@ -263,9 +267,26 @@ function onLinkClick(e) {
 // la page devient réellement visible. Tout ce qui dépend de pixels réellement
 // peints doit attendre ce signal : tant que le rideau couvre l'écran, Chrome ne
 // rastérise pas ce qu'il masque.
+// L'ÉCOUTEUR EST BRANCHÉ DÈS LE CHARGEMENT DU BUNDLE, hors de `onReady`.
+//
+// Il l'était auparavant dans `initPageTransition`, donc seulement une fois le
+// DOM stabilisé : 150ms de silence, et jusqu'à 3s si la page continue de muter.
+// Entre le premier paint et ce moment-là, AUCUN clic n'était intercepté. Remix
+// faisait alors sa navigation client-side, et comme le verrou `display:none`
+// posé par l'intro précédente survit (même document, pas de rechargement), le
+// rideau ne s'affichait pas non plus : la page suivante apparaissait d'un coup,
+// sans transition. Symptôme intermittent, puisqu'il dépend de la vitesse à
+// laquelle le visiteur clique.
+//
+// L'écouteur ne dépend de rien : il fonctionne par délégation et vérifie
+// lui-même la présence des volets. Rien ne justifie de le faire attendre.
+// Le script est en `defer`, donc `document` existe forcément ici.
+document.addEventListener('click', onLinkClick, true)
+
 export default function initPageTransition() {
-  // L'écouteur de liens ne dépend pas des volets : on le branche tout de suite,
-  // même si le rideau n'est pas encore là.
+  // Idempotence : `init` peut rejouer (ré-hydratation, navigation SPA). Sans ce
+  // retrait, l'écouteur s'empilerait et `animateTransition` partirait plusieurs
+  // fois pour un seul clic.
   document.removeEventListener('click', onLinkClick, true)
   document.addEventListener('click', onLinkClick, true)
 

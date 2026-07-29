@@ -109,6 +109,35 @@ function revealTransition() {
 // vignette (le `style.width` du hover forçait enfin le repaint). Vérifié par
 // contrôle : injecter une règle sans effet ne débloque rien, `display:none`
 // sur .transition_div débloque les 7 immédiatement.
+// FOND DU DOCUMENT — sombre entre deux pages, clair une fois la page affichée.
+//
+// Le trou entre deux documents ne peut être peint que par le fond de <html> :
+// à cet instant, rien d'autre n'existe encore. Il est donc mis à #222 en CSS
+// dans le <head> Webstudio, pour qu'il se confonde avec le rideau au lieu
+// d'afficher le blanc par défaut.
+//
+// Mais ce fond reste visible APRÈS le chargement, et pas qu'un peu : le pin du
+// footer crée un `.pin-spacer-footer` en `position:absolute`, donc HORS DU
+// FLUX. Le <body> ne le compte pas dans sa hauteur alors qu'il rallonge le
+// document — 484px mesurés sur /categories/ (document 4747, body 4263). Cette
+// bande en bas de page affichait donc du #222 sous le footer.
+//
+// On aligne donc <html> sur la couleur du <body> dès que le bundle tourne. Le
+// sombre ne sert plus qu'au moment où il est utile. On copie la couleur réelle
+// du body plutôt que d'en coder une en dur : elle change d'une page à l'autre
+// (blanc sur la home et le contact, #f2f2f2 sur /projets/all et /categories/).
+//
+// NB : les 484px de vide défilable en bas de chaque page sont un défaut à part
+// entière, antérieur à tout ceci — il était simplement invisible tant que la
+// bande avait la même couleur que la page.
+function aligneFondDocument() {
+  const fondBody = getComputedStyle(document.body).backgroundColor
+  // Body transparent → on ne sait pas quoi copier, et écraser le #222 par du
+  // transparent ramènerait le blanc du canvas. On laisse en l'état.
+  if (!fondBody || fondBody === 'rgba(0, 0, 0, 0)') return
+  document.documentElement.style.backgroundColor = fondBody
+}
+
 const DONE_STYLE_ID = 'ws-transition-done'
 
 function lockCurtainHidden() {
@@ -283,6 +312,11 @@ function onLinkClick(e) {
 // Le script est en `defer`, donc `document` existe forcément ici.
 document.addEventListener('click', onLinkClick, true)
 
+// Dès le chargement du bundle, sans attendre `onReady` : plus tôt <html> reprend
+// la couleur de la page, plus courte est la fenêtre où la bande du bas est
+// sombre. Le script est en `defer`, donc `document.body` existe forcément ici.
+aligneFondDocument()
+
 export default function initPageTransition() {
   // Idempotence : `init` peut rejouer (ré-hydratation, navigation SPA). Sans ce
   // retrait, l'écouteur s'empilerait et `animateTransition` partirait plusieurs
@@ -322,6 +356,10 @@ export default function initPageTransition() {
 }
 
 function joueIntro() {
+  // Rejoué ici en plus du niveau module : l'hydratation Remix peut poser la
+  // couleur de fond du body après notre premier passage.
+  aligneFondDocument()
+
   // Le rideau DOIT passer au-dessus de tout (navbar, #cloud, images…). La
   // valeur de référence est désormais dans styles/style.css (z-index:9999) —
   // elle s'applique dès l'injection du CSS, sans attendre ce JS. Ce

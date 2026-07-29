@@ -259,6 +259,44 @@ function animateTransition() {
 // ~15ms et le contenu de la route suit ~6ms plus tard (data-page à jour, volets
 // remplacés par des nœuds neufs). D'où l'attente sur `location.pathname` puis
 // deux frames pour laisser le rendu se poser.
+// ATTENTE DU RENDU DE LA ROUTE — on attend que le DOM se taise, pas un délai.
+//
+// Le changement d'URL précède le rendu de React. Mesuré à ~6ms sur une machine
+// rapide en navigation par clic, mais bien plus lent au retour arrière : avec un
+// délai fixe de 100ms, `lancePageCourante()` partait avant que `.cols_footer`
+// n'existe, l'init du footer sortait sans rien faire, et la page se retrouvait
+// SANS animation de footer (aucun pin créé — constaté : pinSpacers à 0 sur la
+// home après un retour). Une valeur devinée est précisément ce qu'on a passé
+// cette session à retirer du code.
+const SILENCE_ROUTE_MS = 120
+const ATTENTE_ROUTE_MAX_MS = 1500
+
+function attendRenduRoute() {
+  return new Promise((resolve) => {
+    let minuteur
+    const observer = new MutationObserver(programme)
+
+    function fini() {
+      clearTimeout(minuteur)
+      clearTimeout(plafond)
+      observer.disconnect()
+      // Une frame de plus : le layout doit être posé quand ScrollTrigger prend
+      // ses mesures, sinon les start/end se calculent sur une page en cours.
+      requestAnimationFrame(resolve)
+    }
+
+    function programme() {
+      clearTimeout(minuteur)
+      minuteur = setTimeout(fini, SILENCE_ROUTE_MS)
+    }
+
+    // Filet : une page qui mute en continu ne doit pas bloquer la reprise.
+    const plafond = setTimeout(fini, ATTENTE_ROUTE_MAX_MS)
+    observer.observe(document.body, { childList: true, subtree: true })
+    programme()
+  })
+}
+
 let renvoiEnCours = false
 
 // Filet : si Remix ne prend pas la main (lien hors de son routeur, erreur de
@@ -275,9 +313,7 @@ function naviguerSPA(link, url) {
     const debut = performance.now()
     ;(function attend() {
       if (window.location.pathname === url.pathname) {
-        // Deux frames : la première laisse React committer, la seconde laisse le
-        // layout se poser avant que les inits ne prennent leurs mesures.
-        requestAnimationFrame(() => requestAnimationFrame(resolve))
+        attendRenduRoute().then(resolve)
         return
       }
       if (performance.now() - debut > DELAI_ROUTE_MS) {
@@ -364,6 +400,7 @@ function onLinkClick(e) {
       noteChemin()
       window.scrollTo(0, 0)
       nettoieRoute()
+      aligneFondDocument()
       lancePageCourante()
       // Même animation qu'au premier chargement : les volets de la nouvelle
       // route arrivent neufs, donc à translateY(0) — déjà couvrants, sans
@@ -418,16 +455,13 @@ window.addEventListener('popstate', () => {
   // Remix rend la nouvelle route juste après l'événement (mesuré : ~6ms après
   // le changement d'URL). Deux frames suffisent, précédées d'un court délai
   // pour absorber un rendu plus lent sans imposer d'attente perceptible.
-  setTimeout(() => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (window.location.pathname === cheminCourant) return
-        noteChemin()
-        nettoieRoute()
-        lancePageCourante()
-      })
-    })
-  }, 100)
+  if (window.location.pathname === cheminCourant) return
+  noteChemin()
+  attendRenduRoute().then(() => {
+    nettoieRoute()
+    lancePageCourante()
+    aligneFondDocument()
+  })
 })
 
 document.addEventListener('click', onLinkClick, true)

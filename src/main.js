@@ -26,4 +26,4 @@ window.Webstudio.onReady(() => {
   lancePageCourante()
 })
 
-console.log('Elparo bundle loaded from local 23/07')
+console.log('Elparo bundle loaded from local 29/07')

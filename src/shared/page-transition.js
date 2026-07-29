@@ -167,6 +167,22 @@ function surveilleRideau() {
   }, WATCHDOG_MS)
 }
 
+// Le mot « elparo » ne doit pas survivre à la descente du rideau.
+//
+// Entre deux documents, l'écran n'affiche plus que le fond du nouveau document
+// — un aplat #222 posé en CSS dans le <head> Webstudio, sans aucun contenu,
+// puisque rien n'est encore peint. Le mot est donc forcément absent pendant ce
+// trou. S'il est encore là à la dernière image de la page sortante, on le voit
+// disparaître puis revenir : il « saute ». Tant que le trou était blanc, ce
+// saut passait inaperçu — noyé dans le flash. Fond continu, saut visible.
+//
+// On l'efface donc AVANT le trou, en fondu, pour que la dernière image de
+// l'ancienne page et la première de la nouvelle soient identiques : un aplat.
+// Le retour en fondu, lui, est en CSS côté Webstudio (le mot est déjà dans le
+// HTML servi : le masquer en JS le ferait clignoter à la première image, avant
+// que le bundle n'ait tourné).
+const FONDU_MARQUE = 0.35
+
 function animateTransition() {
   return new Promise((resolve) => {
     unlockCurtain()
@@ -182,6 +198,14 @@ function animateTransition() {
         ease: 'expo.out',
       },
       0
+    )
+    // Calé sur la FIN du timeline (`>-0.35`), pas sur un instant absolu : la
+    // durée totale dépend du nombre de volets via le stagger, et le fondu doit
+    // se terminer pile quand la navigation part.
+    tl.to(
+      '.transition_center',
+      { opacity: 0, duration: FONDU_MARQUE, ease: 'power1.in' },
+      `>-${FONDU_MARQUE}`
     )
   })
 }

@@ -2,31 +2,16 @@
 //
 // Le routing se fait par un attribut data-page, à définir dans Webstudio
 // pour chaque page (sur le body, ou à défaut le wrapper de plus haut niveau) :
-//   data-page="home" | "projects" | "project" | "contact"
+//   data-page="home" | "projects" | "project" | "contact" | "categories"
+//
+// La table des routes et le lancement de la page vivent dans routes.js, parce
+// qu'ils servent DEUX fois : ici au premier chargement, et dans
+// page-transition.js à chaque navigation SPA.
 import './webstudio-utils.js'
 import './styles/style.css'
-import categories from './pages/categories.js'
-import contact from './pages/contact.js'
-import home from './pages/home.js'
-import project from './pages/project.js'
-import projects from './pages/projects.js'
+import lancePageCourante from './routes.js'
 import initMenuReveal from './shared/menu-reveal.js'
 import initPageTransition from './shared/page-transition.js'
-
-const routes = {
-  home,
-  projects,
-  project,
-  contact,
-  // Les pages Webstudio `categories` (liste) et `category` (détail d'une
-  // catégorie) affichent la même grille `.projetFromProjets` que `projects`.
-  // `categories` a en plus le nuage `#nuage` → module dédié ; `category`
-  // (détail) réutilise tel quel l'init de `projects`. Sans ces deux entrées,
-  // data-page="categories"/"category" ne matchait aucune route → les
-  // animations de ces pages ne se lançaient pas.
-  categories,
-  category: projects,
-}
 
 window.Webstudio.onReady(() => {
   // La transition entre pages est présente partout.
@@ -38,13 +23,7 @@ window.Webstudio.onReady(() => {
   initMenuReveal()
 
   // Exécute uniquement le script de la page courante.
-  // Webstudio pose parfois l'attribut sur un wrapper plutôt que sur <body>,
-  // donc on le cherche sur le body puis, à défaut, n'importe où dans le DOM.
-  const page =
-    document.body.dataset.page ||
-    document.querySelector('[data-page]')?.dataset.page
-  const init = routes[page]
-  if (init) init()
+  lancePageCourante()
 })
 
 console.log('Elparo bundle loaded from local 23/07')

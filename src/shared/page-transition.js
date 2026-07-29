@@ -1,6 +1,8 @@
 // page-transition.js — animation de transition entre pages (rideau `.transition`).
 // Mutualisé : ce bloc était copié à l'identique dans home / project / projects / contact.
 import { gsap } from '../lib/gsap.js'
+import lancePageCourante from '../routes.js'
+import nettoieRoute from './teardown.js'
 
 // Décalage entre les 3 volets. Volontairement un simple nombre, et SURTOUT pas
 // `{ grid: [1, 3] }` comme avant : cette grille était figée à 3 cellules et se
@@ -210,18 +212,77 @@ function animateTransition() {
   })
 }
 
+// NAVIGATION SPA — on laisse Remix faire son travail au lieu de le contourner.
+//
+// L'ancienne version interceptait le clic puis faisait `window.location.href`,
+// un rechargement complet, UNIQUEMENT pour pouvoir rejouer l'intro. Tout ce
+// qu'on a passé des jours à colmater venait de là : le trou blanc entre deux
+// documents, la course avec l'hydratation qui recréait les volets en pleine
+// animation, la fenêtre morte où les clics n'étaient pas encore interceptés, le
+// chien de garde, le verrou CSS. Sans second document, rien de tout ça n'existe.
+//
+// Comment on rend la main à Remix : on ne peut pas « ne pas intercepter », il
+// faut d'abord jouer le rideau. On rejoue donc le clic sur le lien une fois le
+// rideau posé, avec un drapeau qui fait passer notre propre écouteur au travers.
+// Remix le reçoit alors normalement et fait sa navigation client-side.
+//
+// Séquencement mesuré sur le site : après le renvoi du clic, l'URL change en
+// ~15ms et le contenu de la route suit ~6ms plus tard (data-page à jour, volets
+// remplacés par des nœuds neufs). D'où l'attente sur `location.pathname` puis
+// deux frames pour laisser le rendu se poser.
+let renvoiEnCours = false
+
+// Filet : si Remix ne prend pas la main (lien hors de son routeur, erreur de
+// chargement), on retombe sur une navigation dure plutôt que de laisser le
+// visiteur devant un rideau qui ne se lèvera jamais.
+const DELAI_ROUTE_MS = 3000
+
+function naviguerSPA(link, url) {
+  return new Promise((resolve, reject) => {
+    renvoiEnCours = true
+    link.click()
+    renvoiEnCours = false
+
+    const debut = performance.now()
+    ;(function attend() {
+      if (window.location.pathname === url.pathname) {
+        // Deux frames : la première laisse React committer, la seconde laisse le
+        // layout se poser avant que les inits ne prennent leurs mesures.
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+        return
+      }
+      if (performance.now() - debut > DELAI_ROUTE_MS) {
+        reject(new Error('navigation SPA sans effet'))
+        return
+      }
+      requestAnimationFrame(attend)
+    })()
+  })
+}
+
+// Le menu plein écran est un Dialog Radix. Avec un rechargement complet il
+// disparaissait avec le document ; en SPA il resterait monté PAR-DESSUS la
+// nouvelle page. On demande donc sa fermeture — Radix écoute Échap sur le
+// document — pendant que le rideau couvre l'écran, donc sans que ça se voie.
+function fermeMenuSiOuvert() {
+  if (!document.querySelector('.w-dialog-content')) return
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+  )
+}
+
 // Interception des clics sur les liens internes, PAR DÉLÉGATION en phase
 // capture. Deux raisons cruciales :
 //  1) La délégation capte AUSSI les liens montés après l'init (ex. les liens du
 //     menu Radix, ajoutés au DOM à l'ouverture) — un `forEach` sur les <a> à
 //     l'init les ratait.
-//  2) Webstudio publie une app **Remix** : les liens internes déclenchent une
-//     navigation **client-side (SPA)**, et `Webstudio.onReady` ne re-tourne PAS
-//     sur ces changements de route → `initPageTransition` ne rejoue pas → le
-//     rideau reste figé en position couvrante. En interceptant en capture +
-//     stopImmediatePropagation, on court-circuite le SPA de Remix, puis on
-//     navigue « en dur » (`window.location.href`) → l'intro rejoue proprement.
+//  2) La capture nous met AVANT les gestionnaires de Remix : on peut donc jouer
+//     le rideau d'abord, et ne rendre la main qu'ensuite.
 function onLinkClick(e) {
+  // Clic qu'on se renvoie à nous-mêmes pour rendre la main à Remix : on le
+  // laisse filer sans rien faire, sinon on boucle.
+  if (renvoiEnCours) return
+
   // Laisse passer : clics modifiés (nouvel onglet), clic droit/milieu.
   if (
     e.defaultPrevented ||
@@ -255,12 +316,36 @@ function onLinkClick(e) {
   // normalement plutôt que d'imposer 1,5s d'attente sur un rideau inexistant.
   if (!document.querySelector('.transition')) return
 
-  // Lien interne → on joue le rideau puis navigation DURE (contourne le SPA).
+  // Lien interne → rideau, puis navigation SPA, puis relance de la page.
   e.preventDefault()
   e.stopImmediatePropagation()
-  animateTransition().then(() => {
-    window.location.href = url.href
-  })
+
+  animateTransition()
+    .then(() => {
+      fermeMenuSiOuvert()
+      return naviguerSPA(link, url)
+    })
+    .then(() => {
+      // Le document ne change pas : c'est à nous de remettre la page à zéro.
+      // Dans cet ordre, et pendant que le rideau couvre encore l'écran :
+      //  1. le scroll, sinon on arrive au milieu de la nouvelle page ;
+      //  2. le démontage, sinon les ScrollTrigger de la route précédente
+      //     s'empilent (le pin du footer se dupliquerait) ;
+      //  3. l'init de la nouvelle page, qui prend ses mesures sur un layout posé.
+      window.scrollTo(0, 0)
+      nettoieRoute()
+      lancePageCourante()
+      // Même animation qu'au premier chargement : les volets de la nouvelle
+      // route arrivent neufs, donc à translateY(0) — déjà couvrants, sans
+      // rupture visible avec ceux qu'on vient d'animer.
+      return joueIntro()
+    })
+    .catch((erreur) => {
+      // Remix n'a pas pris la main : on ne laisse pas le visiteur sous un
+      // rideau figé, on navigue en dur comme avant.
+      console.warn('[transition] repli sur navigation dure:', erreur.message)
+      window.location.href = url.href
+    })
 }
 
 // Renvoie une Promise résolue quand le rideau a fini de se lever — le moment où

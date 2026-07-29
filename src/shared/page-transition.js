@@ -276,7 +276,77 @@ export default function initPageTransition() {
   })
 }
 
+// Une page peut NAÎTRE SANS ÊTRE À L'ÉCRAN. Deux cas réels :
+//
+//  • PRERENDER — Arc précharge la destination au survol d'un lien et exécute la
+//    page entière en arrière-plan (Chrome fait pareil depuis l'omnibox).
+//    `document.prerendering` vaut alors true, et l'activation n'arrive qu'au clic.
+//  • ONGLET CACHÉ — page ouverte en arrière-plan, ou session restaurée.
+//
+// Dans les deux cas l'intro se jouerait À VIDE : quand la page s'affiche enfin,
+// le rideau est déjà remonté et la page apparaît d'un bloc. C'est exactement le
+// symptôme signalé sur Arc et absent de Chrome, Safari et Firefox — ces trois-là
+// n'ayant pas préchargé le lien lors des tests.
+//
+// On attend donc que la page soit RÉELLEMENT affichée avant de lever le rideau.
+//
+// ATTENTION — cette attente est sur le CHEMIN CRITIQUE de l'affichage du site :
+// tant qu'elle ne se résout pas, le rideau reste couvrant et la page est un
+// écran noir inutilisable. Une première version n'écoutait que l'événement
+// `visibilitychange` : sur Arc, la page démarre bien cachée mais est dévoilée
+// SANS que l'événement nous parvienne — le site restait noir indéfiniment.
+//
+// D'où les deux filets ci-dessous. La règle : un signal manqué ne doit jamais
+// pouvoir figer la page. Une intro jouée à vide n'est qu'un défaut esthétique ;
+// un rideau bloqué rend le site inutilisable.
+const ATTENTE_VISIBLE_MAX_MS = 4000
+const SONDAGE_VISIBLE_MS = 100
+
+function estAffichee() {
+  return !document.prerendering && document.visibilityState === 'visible'
+}
+
+function attendPageVisible() {
+  if (estAffichee()) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    let fini = false
+
+    function termine() {
+      if (fini) return
+      fini = true
+      clearInterval(sondage)
+      clearTimeout(plafond)
+      document.removeEventListener('visibilitychange', surSignal)
+      document.removeEventListener('prerenderingchange', surSignal)
+      resolve()
+    }
+
+    function surSignal() {
+      if (estAffichee()) termine()
+    }
+
+    document.addEventListener('visibilitychange', surSignal)
+    document.addEventListener('prerenderingchange', surSignal)
+
+    // FILET 1 — sondage : rattrape le dévoilement quand aucun événement n'est
+    // émis (cas Arc). 100ms est imperceptible à l'œil et sans coût mesurable.
+    const sondage = setInterval(surSignal, SONDAGE_VISIBLE_MS)
+
+    // FILET 2 — plafond : au pire on joue l'intro même si le navigateur affirme
+    // encore que la page est cachée. Jamais de blocage définitif.
+    const plafond = setTimeout(termine, ATTENTE_VISIBLE_MAX_MS)
+  })
+}
+
 function joueIntro() {
+  // Tout ce qui suit — y compris le CHIEN DE GARDE — ne doit démarrer qu'une fois
+  // la page à l'écran. Sinon son délai de 6s s'écoulerait pendant le prerender et
+  // il escamoterait le rideau avant même que l'intro ait eu lieu.
+  return attendPageVisible().then(joueIntroMaintenant)
+}
+
+function joueIntroMaintenant() {
   // Le rideau DOIT passer au-dessus de tout (navbar, #cloud, images…). La
   // valeur de référence est désormais dans styles/style.css (z-index:9999) —
   // elle s'applique dès l'injection du CSS, sans attendre ce JS. Ce

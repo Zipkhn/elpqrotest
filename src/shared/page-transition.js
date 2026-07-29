@@ -17,21 +17,74 @@ import { gsap } from '../lib/gsap.js'
 // l'œil ne lisait qu'un seul départ. Valeur esthétique, à ajuster librement.
 const DECALAGE_VOLETS = 0.25
 
+function construitReveal(volets) {
+  const tl = gsap.timeline({ paused: true })
+  tl.fromTo(
+    volets,
+    { translateY: 0 },
+    {
+      translateY: '-100vh',
+      duration: 1.5,
+      delay: 0.2,
+      stagger: DECALAGE_VOLETS,
+      ease: 'expo.inOut',
+    },
+    0
+  )
+  return tl
+}
+
+// L'intro se joue PENDANT que Remix hydrate encore. Mesuré (CPU ×6, 4G lente,
+// /projets/all) : le reveal démarre à 606ms, et à 872ms React REMPLACE les trois
+// volets par des nœuds neufs. GSAP continue alors d'animer les anciens, détachés
+// donc invisibles ; les nouveaux restent à translateY(0), plein écran noir. À la
+// fin du timeline, le `gsap.set('.transition', …)` + `lockCurtainHidden()` de
+// joueIntro re-interrogent le DOM, tombent sur les NOUVEAUX volets et les font
+// disparaître d'un coup : le rideau ne remonte jamais, la page apparaît d'un
+// bloc. C'était le « flash blanc » et le « elparo qui clignote ».
+//
+// La porte d'attente de webstudio-utils ne suffit pas : son silence de 150ms peut
+// s'ouvrir dans une accalmie de l'hydratation, avant le remplacement. Plutôt que
+// de rallonger ce délai (on retomberait sur une valeur devinée), on encaisse le
+// remplacement : dès qu'il arrive, on reconstruit le timeline sur les nouveaux
+// volets et on le repositionne à la MÊME progression. Le mouvement continue sans
+// rupture visible.
+//
+// MutationObserver et pas `onUpdate` du timeline : le callback d'un observer
+// s'exécute avant le prochain paint, donc le rebranchement se fait dans la frame
+// même du remplacement. Avec onUpdate on peindrait une frame avec les nouveaux
+// volets encore à translateY(0) — un sursaut du rideau vers le bas.
+//
+// Le test est en O(1) : tant que le premier volet est toujours dans le document,
+// rien n'a été remplacé. L'observer voit passer toutes les mutations de
+// l'hydratation, il ne doit donc surtout pas faire de travail à chaque appel.
 function revealTransition() {
   return new Promise((resolve) => {
-    const tl = gsap.timeline({ onComplete: resolve })
-    tl.fromTo(
-      '.transition',
-      { translateY: 0 },
-      {
-        translateY: '-100vh',
-        duration: 1.5,
-        delay: 0.2,
-        stagger: DECALAGE_VOLETS,
-        ease: 'expo.inOut',
-      },
-      0
-    )
+    let volets = [...document.querySelectorAll('.transition')]
+    let tl = construitReveal(volets)
+
+    const observer = new MutationObserver(() => {
+      if (volets[0]?.isConnected) return
+
+      const actuels = [...document.querySelectorAll('.transition')]
+      if (!actuels.length) return // remplacement en cours : on attend la suite
+
+      const progression = tl.progress()
+      tl.kill()
+      volets = actuels
+      tl = construitReveal(volets)
+      tl.eventCallback('onComplete', termine)
+      tl.progress(progression).play()
+    })
+
+    function termine() {
+      observer.disconnect()
+      resolve()
+    }
+
+    observer.observe(document.body, { childList: true, subtree: true })
+    tl.eventCallback('onComplete', termine)
+    tl.play()
   })
 }
 

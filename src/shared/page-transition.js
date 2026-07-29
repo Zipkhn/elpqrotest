@@ -332,6 +332,7 @@ function onLinkClick(e) {
       //  2. le démontage, sinon les ScrollTrigger de la route précédente
       //     s'empilent (le pin du footer se dupliquerait) ;
       //  3. l'init de la nouvelle page, qui prend ses mesures sur un layout posé.
+      noteChemin()
       window.scrollTo(0, 0)
       nettoieRoute()
       lancePageCourante()
@@ -366,6 +367,40 @@ function onLinkClick(e) {
 // L'écouteur ne dépend de rien : il fonctionne par délégation et vérifie
 // lui-même la présence des volets. Rien ne justifie de le faire attendre.
 // Le script est en `defer`, donc `document` existe forcément ici.
+// RETOUR ARRIÈRE / SUIVANT — le bouton « précédent » du navigateur déclenche une
+// navigation Remix que nous ne voyons PAS : notre écouteur ne capte que les
+// clics. Sans ce traitement, la nouvelle route s'afficherait sans que son init
+// ne tourne (footer, reveal, nuage…), et les ScrollTrigger de la précédente
+// resteraient en place et s'empileraient.
+//
+// Le problème n'existait pas avec le rechargement complet : le navigateur
+// repartait de zéro. Il apparaît AVEC la navigation SPA, c'est donc une dette
+// que celle-ci crée et qu'elle doit payer.
+//
+// Pas de rideau ici : on ne peut pas l'abaisser avant, l'événement arrive une
+// fois la décision prise. On se contente de remettre la page d'aplomb.
+let cheminCourant = window.location.pathname
+
+function noteChemin() {
+  cheminCourant = window.location.pathname
+}
+
+window.addEventListener('popstate', () => {
+  // Remix rend la nouvelle route juste après l'événement (mesuré : ~6ms après
+  // le changement d'URL). Deux frames suffisent, précédées d'un court délai
+  // pour absorber un rendu plus lent sans imposer d'attente perceptible.
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (window.location.pathname === cheminCourant) return
+        noteChemin()
+        nettoieRoute()
+        lancePageCourante()
+      })
+    })
+  }, 100)
+})
+
 document.addEventListener('click', onLinkClick, true)
 
 export default function initPageTransition() {

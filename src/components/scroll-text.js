@@ -57,7 +57,7 @@ export default function initScrollText() {
 
   // Desktop : inchangé.
   mm.add('(min-width: 768px)', () =>
-    build({ height: '240vh', start: '-100% 125%', end: '0% 140%' })
+    build({ height: '245vh', start: '-100% 125%', end: '0% 140%' })
   )
 
   // Mobile : rideau plus haut (couvre la photo entière) ET plage de scroll plus
@@ -65,6 +65,6 @@ export default function initScrollText() {
   // en entier. Ajuste `end` (2e nombre) pour la vitesse, `height` pour la
   // couverture.
   mm.add('(max-width: 767px)', () =>
-    build({ height: '275vh', start: '-100% 125%', end: '0% 170%' })
+    build({ height: '284vh', start: '-100% 125%', end: '0% 170%' })
   )
 }

@@ -21,18 +21,19 @@ export default function initFooter() {
       anticipatePin: 1, // lisse l'instant où le pin s'enclenche (pas de saut)
       scrub: 0.5, // moins de latence que 1
       start: 'bottom bottom',
-      // DURÉE DE LA COURSE — distance de scroll pendant laquelle le footer est
-      // pinné et les colonnes montent. C'est LE réglage de vitesse : plus la
-      // valeur est grande, plus la montée est étalée et lente.
+      // DURÉE DE LA COURSE — c'est LE réglage de vitesse. Le 2e nombre est une
+      // position dans la fenêtre : la distance parcourue va de `bottom` (100%)
+      // jusqu'à cette valeur. Plus elle est BASSE, plus la montée est étalée.
       //
-      // `+=100%` = un écran entier de scroll. L'ancienne valeur (`bottom 40%`)
-      // ne laissait que 60% de fenêtre, soit 484px mesurés : l'animation était
-      // bouclée entre scrollY 1492 et 1899 sur /projets/all, d'où l'impression
-      // de course expédiée.
+      //   'bottom 40%'  → 60% de fenêtre  ≈ 484px  (ancienne valeur, trop rapide :
+      //                   mesuré sur /projets/all, tout se jouait entre scrollY
+      //                   1492 et 1899)
+      //   'bottom -20%' → 120% de fenêtre ≈ 967px  (le double)
+      //   'bottom -80%' → 180% de fenêtre           (encore plus lent)
       //
       // Cette distance est aussi la hauteur du `.pin-spacer-footer` : l'allonger
       // rallonge d'autant le document. C'est normal, c'est la zone d'animation.
-      end: '+=100%',
+      end: 'bottom -20%',
     },
   })
 

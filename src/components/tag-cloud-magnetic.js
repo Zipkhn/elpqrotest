@@ -45,8 +45,11 @@ export default function initTagCloudMagnetic() {
   // être null. L'ancienne version abandonnait alors sans rien faire (nuage vide
   // en prod, selon le timing de chargement). On observe donc son apparition et
   // on construit dès qu'il est là — comme la résilience du slider mobile.
-  let done = false
   let categoriesPromise = null
+  // Voir `tryBuild` : on ne débranche l'observer qu'après un délai de calme, une
+  // fois le nuage construit ET toujours attaché.
+  let armeArret = null
+  const CALME_AVANT_ARRET_MS = 3000
   // Une promesse mémorise son RÉSULTAT, y compris un rejet. En cachant telle
   // quelle une promesse rejetée, chaque mutation du DOM rejouait `tryBuild()`,
   // retombait sur le même rejet et journalisait un nouvel avertissement — des
@@ -66,18 +69,62 @@ export default function initTagCloudMagnetic() {
     return categoriesPromise
   }
 
+  // NE JAMAIS GARDER `#nuage` EN TRAVERS D'UN `await` : REACT LE REMPLACE.
+  //
+  // L'ancienne version lisait le conteneur une seule fois, en tête, puis
+  // attendait le fetch Hygraph (~200ms) avant de construire dedans. Or
+  // l'hydratation Remix remplace `#nuage` par un nœud NEUF — mesuré en prod sur
+  // /categories : nœud serveur présent à 315ms, DÉTACHÉ à 420ms, remplaçant
+  // peuplé à 827ms. Quand le fetch se terminait après ce remplacement, les 25
+  // tags étaient construits dans le nœud DÉTACHÉ. Le `#nuage` du document,
+  // lui, restait vide — définitivement, puisqu'on posait `done = true` et qu'on
+  // débranchait l'observer dans la foulée.
+  //
+  // Aucune erreur n'était journalisée : rien n'avait échoué, on avait seulement
+  // écrit à côté. Et c'est une course, donc intermittente : selon que le fetch
+  // rende la main avant ou après l'hydratation, le nuage s'affiche ou pas. Le
+  // rechargement suivant repart d'un cache chaud, gagne la course, et donne
+  // l'illusion d'un problème de chargement.
+  //
+  // Le conteneur est donc relu APRÈS chaque `await`.
+  //
+  // ET SURTOUT : PLUS DE VERROU `done`. Relire le nœud aux frontières d'`await`
+  // ne suffit pas, parce que le remplacement peut aussi tomber JUSTE APRÈS une
+  // construction réussie. Le cas est reproductible au banc d'essai : quand la
+  // réponse Hygraph est déjà en cache, tout le build se termine en ~30ms, on
+  // posait `done = true` et on débranchait l'observer — et React remplaçait le
+  // conteneur 20ms plus tard, avec les 25 tags dedans. Plus rien pour rattraper.
+  //
+  // L'idempotence repose donc uniquement sur `nuage.querySelector('.tag')`, et
+  // l'observer reste branché jusqu'à ce que le nuage tienne en place pendant
+  // `CALME_AVANT_ARRET_MS`. `buildTags` étant synchrone, le test « pas de tag »
+  // et la construction ne peuvent pas être entrelacés par deux appels
+  // concurrents : le second voit les tags du premier et sort.
   async function tryBuild() {
-    if (done) return
-    const nuage = document.getElementById('nuage')
-    if (!nuage || nuage.querySelector('.tag')) return // absent, ou déjà peuplé
+    const depart = document.getElementById('nuage')
+    if (!depart || depart.querySelector('.tag')) return
+
+    let categories
     try {
-      const categories = await ensureCategories()
-      // un appel concurrent (mutations rapprochées) a pu construire entre-temps
-      if (done || nuage.querySelector('.tag')) return
-      if (!categories.length) return
+      categories = await ensureCategories()
+    } catch (err) {
+      echecs += 1
+      console.warn(
+        `[nuage] fetch Hygraph échoué (${echecs}/${MAX_ECHECS}) :`,
+        err.message
+      )
+      if (echecs >= MAX_ECHECS) observer.disconnect()
+      return
+    }
+
+    if (!categories.length) return
+    const nuage = document.getElementById('nuage')
+    // absent, ou déjà peuplé par un appel concurrent (mutations rapprochées)
+    if (!nuage || nuage.querySelector('.tag')) return
+
+    try {
       buildTags(nuage, categories)
-      done = true
-      observer.disconnect()
+
       // Le placement se déduit de la LARGEUR MESURÉE de chaque mot : mesurer
       // avant que Rakkas ne soit appliquée donnerait les largeurs de la fonte
       // de secours, donc une composition fausse. On attend la fonte, avec un
@@ -86,6 +133,13 @@ export default function initTagCloudMagnetic() {
         document.fonts ? document.fonts.ready : Promise.resolve(),
         new Promise((r) => setTimeout(r, 1200)),
       ])
+
+      // Deuxième `await`, donc deuxième occasion pour React de remplacer le
+      // conteneur — et cette attente-là dure jusqu'à 1,2s. Si nos tags sont
+      // partis avec l'ancien nœud, on sort : le remplacement est lui-même une
+      // mutation, l'observer nous rappellera sur le nœud neuf.
+      if (document.getElementById('nuage') !== nuage) return
+
       const tags = [...nuage.querySelectorAll('.tag')]
       placeTags(nuage, tags)
       animate(nuage)
@@ -100,13 +154,26 @@ export default function initTagCloudMagnetic() {
       const auChangement = () => placeTags(nuage, tags)
       mq.addEventListener('change', auChangement)
       surNettoyage(() => mq.removeEventListener('change', auChangement))
+
+      // Le nuage tient-il ? On laisse passer une période de calme avant de
+      // débrancher : si React remplace encore le conteneur, l'observer est
+      // toujours là pour reconstruire. Une reconstruction rejoue `animate()`,
+      // donc un second jeu d'écouteurs — tous passés par `surNettoyage`, donc
+      // démontés ensemble au changement de route. Le surcoût est borné (les
+      // remplacements se comptent sur les doigts d'une main, pendant
+      // l'hydratation) et se paie une fois, contre un nuage vide définitif.
+      clearTimeout(armeArret)
+      armeArret = setTimeout(() => {
+        if (document.getElementById('nuage')?.querySelector('.tag')) {
+          observer.disconnect()
+        }
+      }, CALME_AVANT_ARRET_MS)
+      surNettoyage(() => clearTimeout(armeArret))
     } catch (err) {
-      echecs += 1
-      console.warn(
-        `[nuage] fetch Hygraph échoué (${echecs}/${MAX_ECHECS}) :`,
-        err.message
-      )
-      if (echecs >= MAX_ECHECS) observer.disconnect()
+      // Message distinct de celui du fetch : confondre les deux a déjà coûté du
+      // temps de diagnostic. Ici le réseau a répondu, c'est la construction ou
+      // le placement qui a lâché.
+      console.error('[nuage] construction du nuage en échec :', err)
     }
   }
 

@@ -38,7 +38,24 @@ function construitReveal(volets) {
       duration: 1.5,
       delay: 0.2,
       stagger: DECALAGE_VOLETS,
-      ease: 'expo.inOut',
+      // `expo.out` ET NON `expo.inOut` — c'est une correction de PERCEPTION, pas
+      // de durée.
+      //
+      // `expo.inOut` laisse le volet quasi immobile pendant les premiers 40 %
+      // puis le projette d'un coup. Échantillonné toutes les 16ms en prod sur
+      // /projets/all : animation démarrée à 334ms, et à 684ms l'écran n'était
+      // découvert qu'à 1 % — 5 pixels sur 806. Un aplat plein écran qui ne
+      // bouge pas pendant 350ms se lit comme « la page ne charge pas », et le
+      // ressenti rapporté était de plusieurs secondes alors que le verrou de fin
+      // tombait à 2325ms (2428ms sur la home : c'est identique partout, aucune
+      // page n'est plus lente qu'une autre).
+      //
+      // `expo.out` part À FOND dès la première frame et décélère à l'arrivée.
+      // Même durée, même décalage entre volets, même longueur de geste — mais
+      // l'écran se dégage tout de suite, et la longue traîne se joue hors champ,
+      // le volet ayant déjà quitté l'écran. On ne raccourcit rien, on retire
+      // l'immobilité du début.
+      ease: 'expo.out',
     },
     0
   )

@@ -336,32 +336,84 @@ function animateTransition() {
 // SANS animation de footer (aucun pin créé — constaté : pinSpacers à 0 sur la
 // home après un retour). Une valeur devinée est précisément ce qu'on a passé
 // cette session à retirer du code.
+// ATTENDRE QUE LE RENDU AIT COMMENCÉ, PAS SEULEMENT QUE LE DOM SE TAISE.
+//
+// La version précédente armait son compte à rebours de silence IMMÉDIATEMENT.
+// Or entre `pushState` et le rendu de React Router, le DOM ne bouge PAS DU
+// TOUT : le routeur doit d'abord aller chercher le module et les données de la
+// route. Ce silence-là n'est pas celui d'un rendu fini, c'est celui d'un rendu
+// qui n'a pas commencé — et on résolvait dessus, 120ms après le clic.
+//
+// La suite se déroulait alors sur la page qu'on QUITTE : `nettoieRoute()` puis
+// `lancePageCourante()` s'exécutaient sur l'ancien DOM, et React remplaçait tout
+// juste après. Chaque écouteur, chaque ScrollTrigger et chaque tween qu'on
+// venait de créer pointait sur des nœuds jetés → page correcte à l'écran, mais
+// entièrement inerte : pas de fondu d'apparition, pas de survol, footer plat.
+//
+// Mesuré en prod (Slow 3G, /categories → /category/wood par un tag du nuage) :
+// URL changée à 1513ms, rendu de la route à 3827ms. Soit 2,3s pendant
+// lesquelles on croyait la page prête. Le défaut dépend donc du cache : route
+// déjà en mémoire → rendu en quelques ms, on passe dans la fenêtre par chance ;
+// cache vide → on la rate. D'où le « ça remarche après un rechargement ».
+//
+// Il touche surtout les liens FABRIQUÉS EN JS (tags du nuage), parce qu'eux
+// passent par `pushState` + `popstate` : rien ne mute d'ici le rendu. Les liens
+// de Remix (`data-discover`) mutent le DOM plus tôt et masquaient le problème.
+//
+// LA SENTINELLE. On retient un nœud de la route qu'on quitte — un volet du
+// rideau — et on attend qu'il quitte le document : React les remplace par des
+// nœuds neufs en rendant la nouvelle route. Vérifié en prod sur les deux cas
+// qui comptent :
+//   /categories → /category/wood  : volet détaché à 1615ms, avec data-page
+//   /category/wood → /category/metal : volet détaché à 2219ms, data-page
+//     INCHANGÉ ("category" des deux côtés) et 5 projets → 3.
+// Ce second cas est la raison de ne pas se contenter de `data-page` : entre deux
+// routes du même gabarit, il ne change jamais.
 const SILENCE_ROUTE_MS = 120
+// Plafond du SILENCE, une fois le rendu commencé.
 const ATTENTE_ROUTE_MAX_MS = 1500
+// Plafond de l'attente DU RENDU lui-même. Généreux : c'est du réseau, et le
+// rideau couvre l'écran pendant ce temps — l'attente se lit comme un
+// chargement, pas comme un blocage. Il ne sert que si React ne rend jamais.
+const ATTENTE_RENDU_MAX_MS = 6000
 
 function attendRenduRoute() {
   return new Promise((resolve) => {
+    const sentinelle = document.querySelector('.transition_div')
+    // Le rendu a-t-il commencé ? Tant que non, les mutations observées sont
+    // celles de la route qu'on quitte : elles ne doivent pas armer le silence.
+    let rendu = false
     let minuteur
-    const observer = new MutationObserver(programme)
+    let plafondSilence
+    const observer = new MutationObserver(surMutation)
 
     function fini() {
       clearTimeout(minuteur)
-      clearTimeout(plafond)
+      clearTimeout(plafondRendu)
+      clearTimeout(plafondSilence)
       observer.disconnect()
       // Une frame de plus : le layout doit être posé quand ScrollTrigger prend
       // ses mesures, sinon les start/end se calculent sur une page en cours.
       requestAnimationFrame(resolve)
     }
 
-    function programme() {
+    function surMutation() {
+      if (!rendu) {
+        if (sentinelle && document.contains(sentinelle)) return
+        rendu = true
+        clearTimeout(plafondRendu)
+        // Filet : une page qui mute en continu ne doit pas bloquer la reprise.
+        plafondSilence = setTimeout(fini, ATTENTE_ROUTE_MAX_MS)
+      }
       clearTimeout(minuteur)
       minuteur = setTimeout(fini, SILENCE_ROUTE_MS)
     }
 
-    // Filet : une page qui mute en continu ne doit pas bloquer la reprise.
-    const plafond = setTimeout(fini, ATTENTE_ROUTE_MAX_MS)
+    const plafondRendu = setTimeout(fini, ATTENTE_RENDU_MAX_MS)
     observer.observe(document.body, { childList: true, subtree: true })
-    programme()
+    // PAS d'amorce ici, contrairement à avant : sans mutation, il n'y a rien à
+    // reprendre. Sans volet en revanche (`sentinelle` nulle), on retombe sur la
+    // première mutation venue — c'est le mieux qu'on puisse faire.
   })
 }
 

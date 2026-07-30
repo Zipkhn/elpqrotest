@@ -25,6 +25,14 @@ export default function initRevealBatch(selector) {
 
   gsap.set(selector, { opacity: 0, y: 100 })
 
+  // Plus de `ScrollTrigger.addEventListener('refreshInit', …)` ici. Il remettait
+  // `.image` à `y: 0` — un vestige de l'époque onLeave/onLeaveBack, sans effet
+  // depuis que l'état initial est posé sur `selector` et non sur `.image`.
+  // Surtout, c'était un écouteur STATIQUE de la classe ScrollTrigger : ni
+  // `st.kill()` ni `nettoieRoute()` ne l'enlèvent, et `initRevealBatch` tourne
+  // sur quatre pages — il s'en accumulait donc un de plus à chaque navigation,
+  // tous rejoués à chaque refresh (c'est-à-dire à chaque création de trigger et
+  // à chaque resize).
   ScrollTrigger.batch(selector, {
     once: true,
     onEnter: (batch) =>
@@ -34,9 +42,5 @@ export default function initRevealBatch(selector) {
         stagger: { each: 0.15, grid: [1, 3] },
         overwrite: true,
       }),
-  })
-
-  ScrollTrigger.addEventListener('refreshInit', () => {
-    if (document.querySelector('.image')) gsap.set('.image', { y: 0 })
   })
 }

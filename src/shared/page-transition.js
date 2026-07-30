@@ -1,8 +1,17 @@
 // page-transition.js — animation de transition entre pages (rideau `.transition`).
 // Mutualisé : ce bloc était copié à l'identique dans home / project / projects / contact.
-import { gsap } from '../lib/gsap.js'
+import { ScrollTrigger, gsap } from '../lib/gsap.js'
 import lancePageCourante from '../routes.js'
 import nettoieRoute from './teardown.js'
+
+// Webstudio sert ses URLs avec un slash final (`/about/`), mais un href écrit à
+// la main dans le builder peut ne pas en avoir (`/about`). Toute comparaison de
+// chemin doit donc passer par ici, sinon on attend une égalité qui n'arrivera
+// jamais : la boucle d'attente de `naviguerSPA` tournerait jusqu'à son délai de
+// 3s, rideau baissé, puis retomberait sur une navigation dure.
+function normalisePath(p) {
+  return p.replace(/\/+$/, '') || '/'
+}
 
 // Décalage entre les 3 volets. Volontairement un simple nombre, et SURTOUT pas
 // `{ grid: [1, 3] }` comme avant : cette grille était figée à 3 cellules et se
@@ -60,6 +69,19 @@ function construitReveal(volets) {
 // Le test est en O(1) : tant que le premier volet est toujours dans le document,
 // rien n'a été remplacé. L'observer voit passer toutes les mutations de
 // l'hydratation, il ne doit donc surtout pas faire de travail à chaque appel.
+//
+// INTERRUPTIBLE. L'écouteur de clic est branché dès le chargement du bundle,
+// donc BIEN AVANT la fin de l'intro : celle-ci dure ~2,2s et peut elle-même
+// démarrer jusqu'à 3s après le DOM (`MAX_WAIT_MS` de webstudio-utils). Un clic
+// dans cette fenêtre de ~5s lançait `animateTransition()` sur LES MÊMES nœuds
+// `.transition`, sans `overwrite` : deux timelines tiraient le rideau en sens
+// contraire. Pire, à sa fin l'intro posait `visibility:hidden` + le verrou
+// `display:none` — elle effaçait le rideau de la navigation SORTANTE, et on
+// voyait la page changer à nu. `stopIntro` permet au clic de reprendre la main
+// proprement : on tue le timeline et on signale l'interruption pour que le
+// `.then()` de joueIntro ne touche à rien.
+let stopIntro = null
+
 function revealTransition() {
   return new Promise((resolve) => {
     let volets = [...document.querySelectorAll('.transition')]
@@ -79,11 +101,25 @@ function revealTransition() {
       tl.progress(progression).play()
     })
 
+    // `stopIntro === annule` avant de remettre à null : si une intro plus
+    // récente a déjà pris la place, celle-ci ne doit pas effacer son annuleur en
+    // se terminant — on laisserait la nouvelle sans moyen d'être interrompue.
     function termine() {
+      if (stopIntro === annule) stopIntro = null
       observer.disconnect()
-      resolve()
+      resolve(true)
     }
 
+    // `tl` est réaffecté par l'observer quand Remix remplace les volets ; la
+    // fermeture lit donc bien le timeline COURANT, pas celui du départ.
+    const annule = () => {
+      if (stopIntro === annule) stopIntro = null
+      observer.disconnect()
+      tl.kill()
+      resolve(false) // interrompue : le rideau appartient au clic, pas à nous
+    }
+
+    stopIntro = annule
     observer.observe(document.body, { childList: true, subtree: true })
     tl.eventCallback('onComplete', termine)
     tl.play()
@@ -112,6 +148,12 @@ function revealTransition() {
 // entière, antérieur à tout ceci — il était simplement invisible tant que la
 // bande avait la même couleur que la page.
 function aligneFondDocument() {
+  // Appelée au niveau module (voir tout en bas) : si le <script> venait un jour
+  // à être posé dans le <head> sans `defer` côté Webstudio, `document.body`
+  // serait null et le TypeError tuerait l'évaluation du module — donc TOUT le
+  // bundle, silencieusement. Une ligne pour ne pas dépendre d'un réglage du
+  // builder qu'on ne contrôle pas.
+  if (!document.body) return
   const fondBody = getComputedStyle(document.body).backgroundColor
   // Body transparent → on ne sait pas quoi copier, et écraser le #222 par du
   // transparent ramènerait le blanc du canvas. On laisse en l'état.
@@ -164,10 +206,32 @@ function unlockCurtain() {
 // la preuve). Sinon on journalise l'état complet pour le diagnostic, puis on
 // débloque. DELAI généreux : l'intro dure ~1,9s, et l'init peut lui-même partir
 // jusqu'à 3s après le chargement si le DOM ne se stabilise pas.
+//
+// ⚠️ IL DOIT ÊTRE ANNULABLE, et ça n'a rien de cosmétique. Son test de sortie
+// est « le verrou CSS existe » ; or `animateTransition()` appelle
+// `unlockCurtain()`, qui RETIRE ce verrou pour pouvoir rejouer le rideau. Un
+// chien de garde armé par l'intro et jamais désarmé se réveillait donc au beau
+// milieu d'une navigation VOLONTAIRE : il voyait « pas de verrou + rideau
+// couvrant », concluait au blocage, et exécutait son déblocage forcé —
+// `visibility:hidden` + verrou — pendant que le rideau descendait. Le rideau
+// s'évaporait, on voyait l'ancienne page, puis il revenait.
+//
+// La fenêtre de déclenchement (~T+4,5s à T+6s après un chargement) correspond
+// exactement à la cadence de lecture d'un visiteur avant son premier clic :
+// c'était intermittent, mais loin d'être rare.
 const WATCHDOG_MS = 6000
 
+let watchdogId
+
+// Appelée dès qu'une transition VOULUE commence : à partir de là, un rideau
+// couvrant est l'état normal, plus un symptôme.
+function annuleSurveillance() {
+  clearTimeout(watchdogId)
+}
+
 function surveilleRideau() {
-  setTimeout(() => {
+  clearTimeout(watchdogId)
+  watchdogId = setTimeout(() => {
     if (document.getElementById(DONE_STYLE_ID)) return // intro terminée : OK
 
     const panneau = document.querySelector('.transition')
@@ -216,6 +280,10 @@ const FONDU_MARQUE = 0.35
 
 function animateTransition() {
   return new Promise((resolve) => {
+    // Une transition VOULUE commence : le rideau va être couvrant, et c'est
+    // normal. Le chien de garde armé par l'intro précédente doit se taire,
+    // sinon il « débloquerait » un rideau qui n'est pas bloqué (voir plus haut).
+    annuleSurveillance()
     unlockCurtain()
     gsap.set('.transition', { visibility: 'visible', translateY: '-100vh' })
     const tl = gsap.timeline({ onComplete: resolve })
@@ -339,9 +407,14 @@ function naviguerSPA(link, url) {
       window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
     }
 
+    // Comparaison NORMALISÉE : Webstudio sert `/about/` mais un href saisi à la
+    // main dans le builder peut valoir `/about`. L'égalité brute n'arrivait
+    // alors jamais — on tournait 3s rideau baissé, puis on repliait sur une
+    // navigation dure, avec le trou blanc que tout ceci sert à éviter.
+    const cible = normalisePath(url.pathname)
     const debut = performance.now()
     ;(function attend() {
-      if (window.location.pathname === url.pathname) {
+      if (normalisePath(window.location.pathname) === cible) {
         attendRenduRoute().then(resolve)
         return
       }
@@ -377,6 +450,17 @@ function onLinkClick(e) {
   // laisse filer sans rien faire, sinon on boucle.
   if (renvoiEnCours) return
 
+  // Une transition est déjà en route (double-clic, ou clic sur un second lien
+  // pendant que le rideau descend). On avale le clic : lancer une deuxième
+  // chaîne poserait deux rideaux, deux `naviguerSPA` concurrents et deux
+  // `lancePageCourante()` sur la même page. On ne laisse surtout pas filer le
+  // clic non plus — ce serait une navigation dure par-dessus la nôtre.
+  if (navigationEnCours) {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    return
+  }
+
   // Laisse passer : clics modifiés (nouvel onglet), clic droit/milieu.
   if (
     e.defaultPrevented ||
@@ -404,7 +488,10 @@ function onLinkClick(e) {
 
   const url = new URL(href, window.location.href)
   if (url.origin !== window.location.origin) return // lien externe
-  if (url.pathname === window.location.pathname) return // même page
+  // Même page — normalisé, sinon `/about` et `/about/` sont vus comme deux
+  // routes différentes et on jouerait une transition pour rester sur place.
+  if (normalisePath(url.pathname) === normalisePath(window.location.pathname))
+    return
 
   // Pas de volets dans le DOM → rien à animer. On laisse le lien agir
   // normalement plutôt que d'imposer 1,5s d'attente sur un rideau inexistant.
@@ -414,33 +501,58 @@ function onLinkClick(e) {
   e.preventDefault()
   e.stopImmediatePropagation()
 
+  // L'intro tourne peut-être encore : elle anime LES MÊMES volets. On lui prend
+  // la main avant d'ouvrir la nôtre (voir le commentaire de `revealTransition`).
+  stopIntro?.()
+  navigationEnCours = true
+
   animateTransition()
     .then(() => {
       fermeMenuSiOuvert()
       return naviguerSPA(link, url)
     })
+    // LE REPLI NE COUVRE QUE LA NAVIGATION, pas la reprise qui suit.
+    //
+    // Ce `.catch` était placé en fin de chaîne : il rattrapait donc aussi les
+    // exceptions de `nettoieRoute()`, `aligneFondDocument()` et consorts. Une
+    // simple erreur d'init déclenchait alors `window.location.href = …`, soit un
+    // rechargement complet du document — exactement ce que le passage en SPA a
+    // supprimé. Ici il ne répond plus qu'à une seule question : Remix a-t-il
+    // pris la main ? On relance l'erreur pour ne pas enchaîner sur la reprise
+    // d'une route qu'on est en train de quitter en dur.
+    .catch((erreur) => {
+      console.warn('[transition] repli sur navigation dure:', erreur.message)
+      navigationEnCours = false
+      window.location.href = url.href
+      // Marquée pour que le `.catch` final ne la re-journalise pas : elle est
+      // déjà traitée, et la reprise de route ne doit surtout pas s'exécuter sur
+      // une page qu'on est en train de quitter en dur.
+      erreur.dejaTraite = true
+      throw erreur
+    })
     .then(() => {
       // Le document ne change pas : c'est à nous de remettre la page à zéro.
-      // Dans cet ordre, et pendant que le rideau couvre encore l'écran :
-      //  1. le scroll, sinon on arrive au milieu de la nouvelle page ;
-      //  2. le démontage, sinon les ScrollTrigger de la route précédente
-      //     s'empilent (le pin du footer se dupliquerait) ;
-      //  3. l'init de la nouvelle page, qui prend ses mesures sur un layout posé.
-      noteChemin()
+      // Le scroll d'abord, sinon on arrive au milieu de la nouvelle page ; le
+      // reste est mutualisé avec le retour arrière (voir `repriseDeRoute`).
       window.scrollTo(0, 0)
-      nettoieRoute()
-      aligneFondDocument()
-      lancePageCourante()
+      repriseDeRoute()
+      // Rendue AVANT `joueIntro()` : l'intro qui suit doit rester interruptible,
+      // sinon un visiteur pressé se retrouve à devoir attendre 2s avant que son
+      // clic suivant ne soit pris en compte.
+      navigationEnCours = false
       // Même animation qu'au premier chargement : les volets de la nouvelle
       // route arrivent neufs, donc à translateY(0) — déjà couvrants, sans
       // rupture visible avec ceux qu'on vient d'animer.
       return joueIntro()
     })
+    // Filet terminal : une exception dans la REPRISE (aligneFondDocument,
+    // rafraichitApresImages, joueIntro…) ne doit ni remonter en promesse non
+    // rattrapée, ni laisser `navigationEnCours` levé — le visiteur ne pourrait
+    // plus cliquer sur aucun lien du reste de sa visite.
     .catch((erreur) => {
-      // Remix n'a pas pris la main : on ne laisse pas le visiteur sous un
-      // rideau figé, on navigue en dur comme avant.
-      console.warn('[transition] repli sur navigation dure:', erreur.message)
-      window.location.href = url.href
+      if (erreur?.dejaTraite) return
+      console.error('[transition] reprise de route en échec:', erreur)
+      navigationEnCours = false
     })
 }
 
@@ -474,23 +586,83 @@ function onLinkClick(e) {
 //
 // Pas de rideau ici : on ne peut pas l'abaisser avant, l'événement arrive une
 // fois la décision prise. On se contente de remettre la page d'aplomb.
-let cheminCourant = window.location.pathname
+let cheminCourant = normalisePath(window.location.pathname)
+
+// Une transition est en cours : `onLinkClick` avale les clics suivants plutôt
+// que d'ouvrir une seconde chaîne concurrente.
+let navigationEnCours = false
 
 function noteChemin() {
-  cheminCourant = window.location.pathname
+  cheminCourant = normalisePath(window.location.pathname)
+}
+
+// RAFRAÎCHISSEMENT APRÈS DÉCODAGE DES IMAGES — la dette la moins visible de la
+// navigation SPA.
+//
+// `attendRenduRoute()` attend que le DOM se taise. Mais le décodage d'une image
+// NE MUTE PAS LE DOM : le silence de 120ms s'ouvre donc pendant que les images
+// sont encore vides. La page grandit ensuite de plusieurs milliers de pixels, et
+// tous les start/end que ScrollTrigger vient de calculer sont périmés — d'où un
+// footer qui part au mauvais moment et des `.item_container` dont le trigger est
+// placé hors de la page, donc qui ne se révèlent jamais.
+//
+// En chargement direct le problème n'existe pas : ScrollTrigger se rafraîchit
+// tout seul sur l'événement `load` du document. EN SPA IL N'Y A PAS DE `load`.
+// C'est précisément pour ça que le défaut ne se reproduit jamais en F5, et
+// seulement en navigation par clic.
+function rafraichitApresImages() {
+  const chemin = normalisePath(window.location.pathname)
+  const enAttente = [...document.images].filter((img) => !img.complete)
+
+  // `decode()` se règle aussi sur une image cassée (il rejette) : `allSettled`
+  // nous évite qu'un seul 404 emporte tout le rafraîchissement.
+  const pret = enAttente.length
+    ? Promise.allSettled(
+        enAttente.map((img) =>
+          img.decode ? img.decode() : Promise.resolve(null)
+        )
+      )
+    : Promise.resolve(null)
+
+  pret.then(() => {
+    // Le visiteur a pu repartir ailleurs entre-temps : rafraîchir maintenant
+    // recalculerait sur une route qui n'est plus la nôtre.
+    if (normalisePath(window.location.pathname) !== chemin) return
+    ScrollTrigger.refresh()
+  })
+}
+
+// REPRISE D'UNE ROUTE — commun au clic et au retour arrière.
+//
+// Les deux chemins faisaient la même chose dans un ordre différent
+// (`aligneFondDocument()` avant l'init d'un côté, après de l'autre), et celui du
+// popstate n'avait aucune protection : une exception dans `nettoieRoute()`
+// empêchait `lancePageCourante()` de tourner, donc la nouvelle page s'affichait
+// sans footer, sans reveal et sans nuage.
+function repriseDeRoute() {
+  noteChemin()
+  // Le démontage AVANT l'init, sinon les ScrollTrigger de la route précédente
+  // s'empilent (le pin du footer se dupliquerait).
+  try {
+    nettoieRoute()
+  } catch (error) {
+    console.error('[transition] nettoyage de route en échec:', error)
+  }
+  aligneFondDocument()
+  lancePageCourante() // isole déjà chaque init, voir routes.js:lance()
+  rafraichitApresImages()
 }
 
 window.addEventListener('popstate', () => {
   // Remix rend la nouvelle route juste après l'événement (mesuré : ~6ms après
   // le changement d'URL). Deux frames suffisent, précédées d'un court délai
   // pour absorber un rendu plus lent sans imposer d'attente perceptible.
-  if (window.location.pathname === cheminCourant) return
+  if (normalisePath(window.location.pathname) === cheminCourant) return
   noteChemin()
-  attendRenduRoute().then(() => {
-    nettoieRoute()
-    lancePageCourante()
-    aligneFondDocument()
-  })
+  // Pas de `window.scrollTo(0, 0)` ici, contrairement au clic : sur un retour
+  // arrière, le navigateur restaure la position précédente et c'est ce que le
+  // visiteur attend.
+  attendRenduRoute().then(repriseDeRoute)
 })
 
 document.addEventListener('click', onLinkClick, true)
@@ -539,6 +711,12 @@ export default function initPageTransition() {
 }
 
 function joueIntro() {
+  // Une intro précédente qui ne serait jamais arrivée à son terme (volets jamais
+  // remplacés, timeline restée en suspens) garderait son MutationObserver
+  // branché sur tout le sous-arbre de <body>. On la termine avant d'en ouvrir
+  // une nouvelle : sans cela, ils s'accumuleraient de navigation en navigation.
+  stopIntro?.()
+
   // Rejoué ici en plus du niveau module : l'hydratation Remix peut poser la
   // couleur de fond du body après notre premier passage.
   aligneFondDocument()
@@ -551,8 +729,6 @@ function joueIntro() {
   document
     .querySelector('.transition_div')
     ?.style.setProperty('z-index', '9999', 'important')
-
-  surveilleRideau()
 
   // Animation d'intro (le rideau se lève).
   //
@@ -572,12 +748,24 @@ function joueIntro() {
   // elle gêne un jour, la retirer et vérifier sur quelques rechargements que
   // les 7 vignettes tiennent : c'est le test qui tranchera.
   unlockCurtain()
+
+  // Le chien de garde s'arme APRÈS `unlockCurtain()`, jamais avant : l'unlock
+  // retire le verrou CSS qui sert justement de preuve « l'intro a eu lieu », et
+  // l'armement doit donc lui succéder. Dans l'autre ordre on désarmait le garde
+  // dans la foulée de son armement, et le filet ne servait plus à rien.
+  surveilleRideau()
+
   gsap.set('.transition', {
     visibility: 'visible',
     translateY: 0,
     opacity: 0.999,
   })
-  return revealTransition().then(() => {
+  return revealTransition().then((estAlleAuBout) => {
+    // Interrompue par un clic : le rideau est repassé sous la responsabilité de
+    // la transition sortante, qui est en train de le faire DESCENDRE. Le cacher
+    // ici — et pire, poser le verrou `display:none` — l'effacerait en pleine
+    // navigation. C'était le rideau qui « saute » puis revient.
+    if (!estAlleAuBout) return
     gsap.set('.transition', { visibility: 'hidden' })
     lockCurtainHidden() // survit à l'hydratation Remix (voir plus haut)
   })

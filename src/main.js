@@ -25,5 +25,3 @@ window.Webstudio.onReady(() => {
   // Exécute uniquement le script de la page courante.
   lancePageCourante()
 })
-
-console.log('Elparo bundle loaded from local 29/07')

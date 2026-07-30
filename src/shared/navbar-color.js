@@ -11,6 +11,7 @@
 //
 // Le SVG a `transition: all` → le changement de stroke est déjà fluide.
 // Effet propre à la home : sur les pages sans #cloud, on ne fait rien.
+import { surNettoyage } from './teardown.js'
 
 const ORANGE = '#ca3b23'
 const WHITE = '#ffffff'
@@ -56,9 +57,24 @@ export default function initNavbarColor() {
 
   // La bande dépend de innerHeight → recalcul au resize (petit débounce).
   let t
-  window.addEventListener('resize', () => {
+  const auResize = () => {
     clearTimeout(t)
     t = setTimeout(build, 150)
+  }
+  window.addEventListener('resize', auResize)
+
+  // DÉSINSCRIPTION OBLIGATOIRE. `io` étant au niveau module, un seul observer
+  // vivait à la fois — mais PAS les écouteurs de resize : chaque visite de la
+  // home en ajoutait un, et chacun gardait dans sa fermeture les `cloud`/`nav`/
+  // `btn` de SA visite. Après une navigation SPA ces nœuds sont détachés (React
+  // les a remplacés), et le moindre redimensionnement faisait alors reconstruire
+  // l'observer sur des éléments hors du document — le dernier écouteur exécuté
+  // gagnant, la couleur de la navbar cessait tout simplement de changer.
+  surNettoyage(() => {
+    clearTimeout(t)
+    window.removeEventListener('resize', auResize)
+    io?.disconnect()
+    io = undefined
   })
 }
 

@@ -23,6 +23,7 @@
 //   3. L'ELLIPSE D'OR cadre l'ensemble, gros au centre, petits en périphérie.
 import { gsap } from '../lib/gsap.js'
 import { fetchCategories } from '../lib/hygraph.js'
+import { surNettoyage } from '../shared/teardown.js'
 
 // Base d'URL d'une page catégorie, PAR LANGUE. Le slug (ex. "wood") est
 // partagé FR/EN ; seul le segment de chemin change selon la langue de la page.
@@ -46,8 +47,22 @@ export default function initTagCloudMagnetic() {
   // on construit dès qu'il est là — comme la résilience du slider mobile.
   let done = false
   let categoriesPromise = null
+  // Une promesse mémorise son RÉSULTAT, y compris un rejet. En cachant telle
+  // quelle une promesse rejetée, chaque mutation du DOM rejouait `tryBuild()`,
+  // retombait sur le même rejet et journalisait un nouvel avertissement — des
+  // centaines pendant l'hydratation, pour un seul échec réseau. On oublie donc
+  // la promesse en cas d'échec (le prochain essai retentera vraiment), et on
+  // compte les échecs pour ne pas boucler indéfiniment sur un endpoint mort.
+  let echecs = 0
+  const MAX_ECHECS = 3
+
   const ensureCategories = () => {
-    if (!categoriesPromise) categoriesPromise = fetchCategories()
+    if (!categoriesPromise) {
+      categoriesPromise = fetchCategories().catch((err) => {
+        categoriesPromise = null
+        throw err
+      })
+    }
     return categoriesPromise
   }
 
@@ -71,15 +86,38 @@ export default function initTagCloudMagnetic() {
         document.fonts ? document.fonts.ready : Promise.resolve(),
         new Promise((r) => setTimeout(r, 1200)),
       ])
-      placeTags(nuage, [...nuage.querySelectorAll('.tag')])
+      const tags = [...nuage.querySelectorAll('.tag')]
+      placeTags(nuage, tags)
       animate(nuage)
+
+      // BASCULE DE BREAKPOINT. `placeTags` sort sans rien écrire en mode compact
+      // (le CSS y remet les tags en `position: static` dans un flex centré, où
+      // --x/--y ne sont pas lus). En passant de mobile à desktop — rotation
+      // d'une tablette, fenêtre élargie — le CSS repassait les tags en absolu
+      // alors qu'aucune coordonnée n'avait jamais été écrite : ils s'empilaient
+      // tous à l'origine du conteneur jusqu'au rechargement suivant.
+      const mq = window.matchMedia(REQUETE_COMPACT)
+      const auChangement = () => placeTags(nuage, tags)
+      mq.addEventListener('change', auChangement)
+      surNettoyage(() => mq.removeEventListener('change', auChangement))
     } catch (err) {
-      console.warn('[nuage] fetch Hygraph échoué, fallback DOM :', err.message)
+      echecs += 1
+      console.warn(
+        `[nuage] fetch Hygraph échoué (${echecs}/${MAX_ECHECS}) :`,
+        err.message
+      )
+      if (echecs >= MAX_ECHECS) observer.disconnect()
     }
   }
 
   const observer = new MutationObserver(tryBuild)
   observer.observe(document.body, { childList: true, subtree: true })
+
+  // L'observer ne se déconnecte de lui-même qu'en cas de SUCCÈS. Sur une page
+  // sans `#nuage`, ou tant que le fetch échoue, il restait branché sur tout le
+  // sous-arbre de <body> pour le reste de la session — et une visite suivante en
+  // ajoutait un deuxième, puis un troisième.
+  surNettoyage(() => observer.disconnect())
 
   tryBuild() // cas où #nuage est déjà présent
 }
@@ -117,8 +155,12 @@ const COMPO = {
   relaxations: 60, // passes d'écartement après le placement en spirale
 }
 
-const estCompact = () =>
-  window.matchMedia('(max-width: 820px), (hover: none)').matches
+// Mode compact : mobile, ou tout pointeur sans survol. La requête est nommée
+// pour que la bascule de breakpoint (voir `initTagCloudMagnetic`) écoute
+// EXACTEMENT le même critère que celui qui décide du placement.
+const REQUETE_COMPACT = '(max-width: 820px), (hover: none)'
+
+const estCompact = () => window.matchMedia(REQUETE_COMPACT).matches
 
 // Hash déterministe d'une chaîne → entier 32 bits (pour un placement stable
 // d'un chargement à l'autre : même catégorie = même position/poids).
@@ -354,6 +396,9 @@ function animate(nuage) {
       { threshold: 0.25 }
     )
     obs.observe(nuage)
+    // Si le visiteur quitte la page avant que le nuage n'ait été vu, l'observer
+    // n'a aucune raison de se déconnecter tout seul.
+    surNettoyage(() => obs.disconnect())
   }
 
   function boot() {
@@ -395,7 +440,35 @@ function animate(nuage) {
       }))
     }
     calculeCentres()
-    window.addEventListener('resize', calculeCentres)
+
+    // POSITION DU NUAGE DANS LA FENÊTRE, MISE EN CACHE.
+    //
+    // Le magnétisme lisait `nuage.getBoundingClientRect()` À CHAQUE MOUSEMOVE.
+    // Un getBoundingClientRect force le navigateur à recalculer la mise en page
+    // avant de répondre : c'était donc un reflow synchrone par mouvement de
+    // souris, sur une page de plusieurs milliers de pixels — et autant de fois
+    // qu'il y avait d'exemplaires du gestionnaire empilés par les navigations
+    // précédentes.
+    //
+    // Le rect ne change qu'au scroll et au resize. On le lit à ces deux moments
+    // seulement. Au passage cela corrige une désynchronisation : `centres` était
+    // recalculé au resize, mais le rect (lui) bougeait aussi au scroll — les
+    // deux repères servant au même calcul n'étaient pas pris au même instant.
+    let rect = nuage.getBoundingClientRect()
+    const majRect = () => {
+      rect = nuage.getBoundingClientRect()
+    }
+    const auResize = () => {
+      calculeCentres()
+      majRect()
+    }
+    window.addEventListener('resize', auResize)
+    window.addEventListener('scroll', majRect, { passive: true })
+
+    surNettoyage(() => {
+      window.removeEventListener('resize', auResize)
+      window.removeEventListener('scroll', majRect)
+    })
 
     // 1. Entrée : fondu + remontée à l'arrivée à l'écran
     gsap.set(tags, { autoAlpha: 0 })
@@ -446,7 +519,7 @@ function animate(nuage) {
       return flotte
     })
 
-    new IntersectionObserver(
+    const obsFlottement = new IntersectionObserver(
       (entries) => {
         const visible = entries.some((e) => e.isIntersecting)
         for (const flotte of flottements) {
@@ -455,7 +528,13 @@ function animate(nuage) {
         }
       },
       { threshold: 0 }
-    ).observe(nuage)
+    )
+    obsFlottement.observe(nuage)
+
+    surNettoyage(() => {
+      obsFlottement.disconnect()
+      flottements.forEach((flotte) => flotte.kill())
+    })
 
     // 3. Magnétisme : les tags proches du curseur s'écartent
     function initMagnetisme() {
@@ -466,8 +545,7 @@ function animate(nuage) {
         y: gsap.quickTo(el, 'y', { duration: 0.5, ease: 'power3.out' }),
       }))
 
-      window.addEventListener('mousemove', (e) => {
-        const rect = nuage.getBoundingClientRect()
+      const auMouvement = (e) => {
         const mx = e.clientX - rect.left
         const my = e.clientY - rect.top
 
@@ -486,7 +564,14 @@ function animate(nuage) {
             setters[i].y(0)
           }
         })
-      })
+      }
+
+      window.addEventListener('mousemove', auMouvement)
+      // LA FUITE LA PLUS COÛTEUSE DU BUNDLE. Ce gestionnaire n'était jamais
+      // retiré : après trois passages sur la home ou /categories/, trois
+      // exemplaires tournaient à chaque mouvement de souris, dont deux animant
+      // des `.tag` que React avait déjà remplacés.
+      surNettoyage(() => window.removeEventListener('mousemove', auMouvement))
     }
 
     // 4. Survol : le tag grossit (les voisins ne changent plus d'opacité).
@@ -516,5 +601,11 @@ function animate(nuage) {
     }
     window.addEventListener('resize', attend)
     document.addEventListener('visibilitychange', attend)
+    // Si la fenêtre ne reprend jamais de taille (iframe restée cachée), ces
+    // deux-là ne se retireraient pas tout seuls.
+    surNettoyage(() => {
+      window.removeEventListener('resize', attend)
+      document.removeEventListener('visibilitychange', attend)
+    })
   }
 }

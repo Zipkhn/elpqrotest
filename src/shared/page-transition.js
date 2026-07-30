@@ -306,9 +306,38 @@ const DELAI_ROUTE_MS = 3000
 
 function naviguerSPA(link, url) {
   return new Promise((resolve, reject) => {
-    renvoiEnCours = true
-    link.click()
-    renvoiEnCours = false
+    // REMIX NE POSSÈDE QUE SES PROPRES LIENS. Ceux qu'il rend portent
+    // `data-discover` et un gestionnaire React : leur renvoyer le clic suffit,
+    // il fait la navigation client-side.
+    //
+    // Les liens FABRIQUÉS EN JS n'en ont pas. Les 25 tags du nuage sortent d'un
+    // `document.createElement('a')` dans tag-cloud-magnetic.js : aucun
+    // gestionnaire React dessus. Un `link.click()` y déclenche une navigation
+    // DURE — mesuré sur /categories/, le contexte d'exécution est détruit et le
+    // document remplacé, donc le rideau qu'on vient de poser saute avec lui.
+    // C'est exactement le trou blanc entre deux documents que le passage en SPA
+    // avait supprimé partout ailleurs.
+    //
+    // Pour ceux-là, on passe par l'History API : React Router écoute `popstate`
+    // et rend la nouvelle route dans le MÊME document. Vérifié en prod sur
+    // /categories/ → /category/wood : `data-page` passe de "categories" à
+    // "category" et le contexte survit.
+    if (link.hasAttribute('data-discover')) {
+      renvoiEnCours = true
+      link.click()
+      renvoiEnCours = false
+    } else {
+      history.pushState({}, '', url.href)
+      // `noteChemin()` AVANT d'émettre l'événement, et ce n'est pas cosmétique :
+      // notre propre écouteur `popstate` (plus bas) sert à rattraper les retours
+      // arrière du navigateur, et il relancerait ici `nettoieRoute()` +
+      // `lancePageCourante()` EN DOUBLE avec la chaîne du clic — deux jeux de
+      // ScrollTrigger, deux constructions du nuage. En alignant `cheminCourant`
+      // sur la nouvelle URL d'abord, son test `pathname === cheminCourant` sort
+      // aussitôt : React Router reçoit l'événement, nous l'ignorons.
+      noteChemin()
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
+    }
 
     const debut = performance.now()
     ;(function attend() {

@@ -34,7 +34,22 @@ import { gsap, ScrollTrigger } from '../lib/gsap.js'
 const MARQUEURS = false
 
 export default function initFooter() {
-  if (!document.querySelector('.cols_footer')) return
+  // LE BLOC DESKTOP DOIT ÊTRE RENDU, pas seulement présent. En ≤479px il vit
+  // dans un `.prefooter` en `display: none` — c'est voulu : un footer mobile
+  // distinct prend le relais. Le nœud existe donc toujours dans le DOM, et
+  // l'ancien test `if (!document.querySelector('.cols_footer')) return` le
+  // laissait passer.
+  //
+  // Conséquence, mesurée sur la home à 390px : `gsap.set('.text_footer', …)`
+  // est un sélecteur GLOBAL, il posait `opacity: 0` sur les QUATRE .text_footer
+  // de la page — les deux du bloc desktop ET les deux du footer mobile. La
+  // timeline censée les rallumer ne démarrait jamais (son endTrigger `.prefooter`
+  // n'a pas de boîte), donc le h1 et le p du footer mobile restaient éteints.
+  //
+  // `getClientRects()` vide = aucune boîte, que ce soit à cause de l'élément
+  // lui-même ou d'un ancêtre masqué. C'est le test qu'il fallait.
+  const cols = document.querySelector('.cols_footer')
+  if (!cols || !cols.getClientRects().length) return
 
   // LE REPÈRE DE SCROLL. `.cols_footer` est `fixed` : sa position dans la
   // fenêtre ne varie plus, il ne peut pas servir de trigger. On s'accroche donc
@@ -72,8 +87,14 @@ export default function initFooter() {
   // deux animations sur le même footer (source de sauts).
   ScrollTrigger.getById('footer')?.kill(true)
 
-  gsap.set('.col_footer', { height: '0%' })
-  gsap.set('.text_footer', { opacity: '0%' })
+  // Sélecteurs BORNÉS au bloc desktop. Même si les deux footers venaient à
+  // cohabiter à l'écran (480–767px, où `.prefooter` n'est plus masqué), le
+  // footer mobile ne serait plus jamais touché par cette animation.
+  const colonnes = cols.querySelectorAll('.col_footer')
+  const textes = cols.querySelectorAll('.text_footer')
+
+  gsap.set(colonnes, { height: '0%' })
+  gsap.set(textes, { opacity: '0%' })
 
   const tlFooter = gsap.timeline({
     scrollTrigger: {
@@ -131,8 +152,10 @@ export default function initFooter() {
   ]
 
   COLONNES.forEach(({ cible, hauteur, depart, duree }) => {
+    const colonne = cols.querySelector(cible)
+    if (!colonne) return
     tlFooter.to(
-      cible,
+      colonne,
       { height: hauteur, duration: duree, ease: 'power3.out' },
       depart
     )
@@ -141,7 +164,7 @@ export default function initFooter() {
   // Le texte (h1 + p) ne doit pas attendre la fin des colonnes : il démarre
   // pendant la montée de col_footer_3 et se joue vite (durée + stagger courts).
   tlFooter.to(
-    '.text_footer',
+    textes,
     {
       opacity: '100%',
       duration: 0.25,

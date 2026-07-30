@@ -1,5 +1,6 @@
 // project-details.js — logique de la page d'un projet :
-// masquage des infos vides, mise en page de la grille, lightbox vidéo, date.
+// masquage des infos vides, lightbox vidéo, date.
+// (la mise en page de la grille est passée en CSS côté Webstudio, voir plus bas)
 
 // Masque les blocs d'info dont le contenu est vide
 function initInfos() {
@@ -26,46 +27,24 @@ function initInfos() {
   })
 }
 
-// Les images portrait occupent deux lignes de la grille.
+// PAS DE MISE EN PAGE DE LA GRILLE ICI.
 //
-// LA MESURE ATTEND LE CHARGEMENT DE L'IMAGE, et c'est tout le sujet.
+// `initGrid()` vivait à cet endroit : il mesurait `naturalWidth`/`naturalHeight`
+// image par image et posait, en INLINE, `grid-row: span 2` sur les conteneurs
+// portrait plus `height: 100%` / `object-fit: cover` sur l'image.
 //
-// L'ancienne version testait `items[i].height > items[i].width`. Sur un <img>,
-// ces deux propriétés reflètent les ATTRIBUTS HTML `width`/`height` — et valent
-// **0** tant que l'image n'est pas disponible et qu'aucun attribut n'est posé.
-// Le test se réduisait donc à `0 > 0`, faux : le `grid-row: span 2` n'était
-// jamais appliqué. Sauf quand l'image était déjà en cache, où il l'était.
-// D'où une mise en page qui changeait entre le premier affichage et le
-// rechargement — sans rien changer au code ni au contenu.
+// La grille desktop est désormais une mosaïque à motif, décrite entièrement en
+// CSS côté Webstudio : trois colonnes, un cycle de dix images (cinq puis cinq en
+// miroir) posé avec `nth-child`, et `object-fit: cover` sur toutes les images.
+// Deux raisons de retirer le JS :
 //
-// `naturalWidth`/`naturalHeight` donnent les dimensions intrinsèques du fichier,
-// indépendamment de tout attribut ; elles ne sont simplement renseignées qu'une
-// fois l'image décodée. On attend donc, image par image : chacune se réarrange
-// dès qu'elle est prête, sans bloquer les autres.
-function initGrid() {
-  const items = document.querySelectorAll('.grid_item')
-  const containers = document.querySelectorAll('.item_container')
-  if (!items.length) return
-
-  const applique = (img, container) => {
-    if (!container) return
-    if (img.naturalHeight > img.naturalWidth) {
-      container.style.gridRow = 'span 2'
-      img.style.height = '100%'
-      img.style.objectFit = 'cover'
-    }
-  }
-
-  items.forEach((img, i) => {
-    const container = containers[i]
-    if (img.complete && img.naturalWidth) {
-      applique(img, container)
-      return
-    }
-    // `once: true` — le gestionnaire se retire lui-même, rien à désinscrire.
-    img.addEventListener('load', () => applique(img, container), { once: true })
-  })
-}
+// 1. Il cassait le motif. Un style inline l'emporte sur la feuille de style :
+//    le `grid-row: span 2` des portraits écrasait le span du motif et décalait
+//    tout ce qui suit. Visible sur /projet/model-2018, seul projet à mélanger
+//    portraits et paysages.
+// 2. Il ne sert plus à rien. Le recadrage `cover` fait tenir n'importe quel
+//    format dans sa tuile ; l'orientation du fichier source n'a plus d'effet
+//    sur la mise en page.
 
 // Lightbox vidéo : zoom / fermeture ; masquée si aucune source valide
 function initVideo() {
@@ -131,7 +110,6 @@ function initDate() {
 
 export default function initProjectDetails() {
   initInfos()
-  initGrid()
   initVideo()
   initDate()
 }

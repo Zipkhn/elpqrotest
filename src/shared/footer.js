@@ -65,7 +65,7 @@ export default function initFooter() {
   //   '100%' → la section vient de sortir entièrement (plus tard)
   // Avancer le départ RALLONGE mécaniquement la course, puisque l'arrivée est
   // fixée au bas du document.
-  const DEPART = '75%'
+  const DEPART = '95%'
 
   // Idempotence : sur une navigation SPA Webstudio ou une ré-hydratation React,
   // initFooter peut se rejouer. On tue le trigger précédent pour ne pas empiler

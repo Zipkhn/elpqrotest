@@ -386,20 +386,38 @@ function animateTransition() {
 //     INCHANGÉ ("category" des deux côtés) et 5 projets → 3.
 // Ce second cas est la raison de ne pas se contenter de `data-page` : entre deux
 // routes du même gabarit, il ne change jamais.
+// LA SENTINELLE EST CAPTURÉE PAR L'APPELANT, AVANT DE DÉCLENCHER LA NAVIGATION.
+//
+// Elle l'était ici, à l'entrée de la fonction — et c'était faux pour les liens
+// de Remix. Sur ces liens on rend la main à React Router, qui ne met l'URL à
+// jour qu'une fois les données chargées ET le rendu validé. Or `naviguerSPA`
+// n'appelle `attendRenduRoute` qu'après avoir vu l'URL changer : à cet instant
+// le conteneur avait DÉJÀ été remplacé, et on capturait donc le nœud NEUF. Il ne
+// quittait évidemment jamais le document, l'attente allait au bout du plafond,
+// et le rideau restait baissé tout ce temps.
+//
+// Mesuré en prod sur 6 navigations réelles : route rendue à ~1,5s dans tous les
+// cas, mais page visible à 7,9s sur celles qui passent par un lien Remix. Seule
+// /categories → /category/wood tenait 2,2s : c'est un tag du nuage, donc la
+// branche `pushState` où l'URL change AVANT le rendu — le seul cas que j'avais
+// vérifié en écrivant la sentinelle.
+//
+// En la passant en argument, l'appelant la relève au bon moment. Et si elle a
+// déjà quitté le document quand on arrive ici, c'est que le rendu est fait :
+// on enchaîne directement sur l'attente de silence.
 const SILENCE_ROUTE_MS = 120
 // Plafond du SILENCE, une fois le rendu commencé.
 const ATTENTE_ROUTE_MAX_MS = 1500
-// Plafond de l'attente DU RENDU lui-même. Généreux : c'est du réseau, et le
-// rideau couvre l'écran pendant ce temps — l'attente se lit comme un
-// chargement, pas comme un blocage. Il ne sert que si React ne rend jamais.
-const ATTENTE_RENDU_MAX_MS = 6000
+// Plafond de l'attente DU RENDU lui-même. Il ne devrait plus jamais servir : s'il
+// se déclenche, c'est un défaut, pas une lenteur — d'où l'avertissement, qui
+// aurait fait gagner du temps sur celui-ci.
+const ATTENTE_RENDU_MAX_MS = 4000
 
-function attendRenduRoute() {
+function attendRenduRoute(sentinelle) {
   return new Promise((resolve) => {
-    const sentinelle = document.querySelector('.transition_div')
     // Le rendu a-t-il commencé ? Tant que non, les mutations observées sont
     // celles de la route qu'on quitte : elles ne doivent pas armer le silence.
-    let rendu = false
+    let rendu = !sentinelle || !document.contains(sentinelle)
     let minuteur
     let plafondSilence
     const observer = new MutationObserver(surMutation)
@@ -414,23 +432,39 @@ function attendRenduRoute() {
       requestAnimationFrame(resolve)
     }
 
+    function marqueRendu() {
+      rendu = true
+      clearTimeout(plafondRendu)
+      // Filet : une page qui mute en continu ne doit pas bloquer la reprise.
+      plafondSilence = setTimeout(fini, ATTENTE_ROUTE_MAX_MS)
+    }
+
     function surMutation() {
       if (!rendu) {
-        if (sentinelle && document.contains(sentinelle)) return
-        rendu = true
-        clearTimeout(plafondRendu)
-        // Filet : une page qui mute en continu ne doit pas bloquer la reprise.
-        plafondSilence = setTimeout(fini, ATTENTE_ROUTE_MAX_MS)
+        if (document.contains(sentinelle)) return
+        marqueRendu()
       }
       clearTimeout(minuteur)
       minuteur = setTimeout(fini, SILENCE_ROUTE_MS)
     }
 
-    const plafondRendu = setTimeout(fini, ATTENTE_RENDU_MAX_MS)
+    const plafondRendu = setTimeout(() => {
+      console.warn(
+        '[transition] rendu de route jamais détecté, reprise au plafond ' +
+          `(${ATTENTE_RENDU_MAX_MS}ms) — sentinelle toujours attachée ?`
+      )
+      fini()
+    }, ATTENTE_RENDU_MAX_MS)
+
     observer.observe(document.body, { childList: true, subtree: true })
-    // PAS d'amorce ici, contrairement à avant : sans mutation, il n'y a rien à
-    // reprendre. Sans volet en revanche (`sentinelle` nulle), on retombe sur la
-    // première mutation venue — c'est le mieux qu'on puisse faire.
+
+    // Le rendu est déjà passé (sentinelle détachée, ou aucune à surveiller) :
+    // on amorce le silence tout de suite. Sinon on n'amorce RIEN — sans
+    // mutation, il n'y a rien à reprendre.
+    if (rendu) {
+      marqueRendu()
+      minuteur = setTimeout(fini, SILENCE_ROUTE_MS)
+    }
   })
 }
 
@@ -443,6 +477,11 @@ const DELAI_ROUTE_MS = 3000
 
 function naviguerSPA(link, url) {
   return new Promise((resolve, reject) => {
+    // RELEVÉE AVANT DE RENDRE LA MAIN À REMIX. Sur un lien `data-discover`,
+    // React Router ne met l'URL à jour qu'une fois le rendu validé : la relever
+    // plus bas, après l'attente sur `location.pathname`, revenait à capturer le
+    // conteneur NEUF, celui qui ne partira jamais.
+    const sentinelle = document.querySelector('.transition_div')
     // REMIX NE POSSÈDE QUE SES PROPRES LIENS. Ceux qu'il rend portent
     // `data-discover` et un gestionnaire React : leur renvoyer le clic suffit,
     // il fait la navigation client-side.
@@ -484,7 +523,7 @@ function naviguerSPA(link, url) {
     const debut = performance.now()
     ;(function attend() {
       if (normalisePath(window.location.pathname) === cible) {
-        attendRenduRoute().then(resolve)
+        attendRenduRoute(sentinelle).then(resolve)
         return
       }
       if (performance.now() - debut > DELAI_ROUTE_MS) {
@@ -731,7 +770,12 @@ window.addEventListener('popstate', () => {
   // Pas de `window.scrollTo(0, 0)` ici, contrairement au clic : sur un retour
   // arrière, le navigateur restaure la position précédente et c'est ce que le
   // visiteur attend.
-  attendRenduRoute().then(repriseDeRoute)
+  //
+  // `popstate` arrive AVANT que React Router n'ait rendu, donc la sentinelle
+  // relevée ici est bien celle de la route qu'on quitte.
+  attendRenduRoute(document.querySelector('.transition_div')).then(
+    repriseDeRoute
+  )
 })
 
 document.addEventListener('click', onLinkClick, true)

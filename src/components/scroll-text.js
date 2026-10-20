@@ -40,9 +40,23 @@ export default function initScrollText() {
   // Sans la classe, repli sur l'ancien réglage (fin relative aux volets).
   const presentation = document.querySelector('.presentation_row')
 
-  const build = ({ height, start, end, finSurPresentation = false }) => {
-    gsap.set('.scroll_effect_text_item', { height })
+  // HAUTEUR MOBILE CALÉE SUR LA PRÉSENTATION.
+  // Retour client : avec 284vh fixes, les volets montaient jusque sur le slider
+  // (.slider_container_mobile) et en cachaient la moitié. Les colonnes sont
+  // ancrées en bas, décalées de 0/20/40 px (escalier) : on prend la plus basse
+  // pour que toutes couvrent le haut de la photo. La plus haute dépasse alors
+  // de 40 px dans la marge grise au-dessus, sans atteindre le slider.
+  const hauteurJusquAPresentation = () => {
+    const items = document.querySelectorAll('.scroll_effect_text_item')
+    if (!presentation || !items.length) return '284vh'
+    const basMax = Math.max(
+      ...[...items].map((i) => i.getBoundingClientRect().bottom)
+    )
+    const h = basMax - presentation.getBoundingClientRect().top
+    return h > window.innerHeight * 1.05 ? h : '284vh'
+  }
 
+  const build = ({ height, start, end, finSurPresentation = false }) => {
     const calee = finSurPresentation && presentation
 
     const tlScroll = gsap.timeline({
@@ -53,16 +67,25 @@ export default function initScrollText() {
         end: calee ? 'bottom bottom' : end,
         scrub: 0.5, // moins de latence que 1 → l'anim colle mieux au scroll
         markers: false, // ⚠️ passe à true pour régler start/end visuellement
+        // `height` peut être une fonction (mobile) : on la remesure à chaque
+        // refresh, la page ayant pu changer de hauteur (images, polices).
+        invalidateOnRefresh: true,
       },
     })
 
-    tlScroll.to('.scroll_effect_text_item', {
-      height: '105vh',
-      // stagger réduit (0.1 → 0.05) : les 3 colonnes finissent plus rapprochées,
-      // la dernière ne traîne plus autant.
-      stagger: { each: 0.05, from: 'start', grid: [1, 3] },
-      ease: 'power3.in',
-    })
+    // fromTo : la hauteur de départ est posée tout de suite (comme l'ancien
+    // gsap.set) et recalculée au refresh grâce à invalidateOnRefresh.
+    tlScroll.fromTo(
+      '.scroll_effect_text_item',
+      { height },
+      {
+        height: '105vh',
+        // stagger réduit (0.1 → 0.05) : les 3 colonnes finissent plus rapprochées,
+        // la dernière ne traîne plus autant.
+        stagger: { each: 0.05, from: 'start', grid: [1, 3] },
+        ease: 'power3.in',
+      }
+    )
   }
 
   // Les callbacks matchMedia sont automatiquement « revert » au changement de
@@ -78,11 +101,15 @@ export default function initScrollText() {
     })
   )
 
-  // Mobile : rideau plus haut (couvre la photo entière) ET plage de scroll plus
-  // courte (end 140 → 200) → les volets descendent plus vite, l'image se voit
-  // en entier. Ajuste `end` (2e nombre) pour la vitesse, `height` pour la
-  // couverture.
+  // Mobile : rideau qui part du haut de la présentation (voir
+  // hauteurJusquAPresentation) ET plage de scroll plus courte → les volets
+  // descendent plus vite, l'image se voit en entier. Ajuste `end` (2e nombre)
+  // pour la vitesse.
   mm.add('(max-width: 767px)', () =>
-    build({ height: '284vh', start: '-100% 125%', end: '0% 170%' })
+    build({
+      height: hauteurJusquAPresentation,
+      start: '-100% 125%',
+      end: '0% 170%',
+    })
   )
 }

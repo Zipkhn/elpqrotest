@@ -30,14 +30,27 @@ export default function initScrollText() {
   //      >> Pour les RALENTIR : baisse-le.
   //      (start : 2e nombre = où l'anim démarre dans la fenêtre ; monter = plus tôt.)
   //      Mets `markers: true` ci-dessous pour visualiser start/end au réglage.
-  const build = ({ height, start, end }) => {
+  // FIN DE COURSE CALÉE SUR LA SECTION PRÉSENTATION (desktop).
+  // Retour client : on ne voyait jamais la photo et le texte en entier, les
+  // volets finissaient de se rétracter APRÈS que le haut de la section était
+  // passé sous la navbar. La rangée `.presentation_row` fait désormais
+  // 100svh - navbar - marge (CSS Webstudio) ; les volets doivent avoir fini
+  // quand son bas touche le bas de l'écran — à cet instant elle est visible
+  // en entier, juste sous la navbar.
+  // Sans la classe, repli sur l'ancien réglage (fin relative aux volets).
+  const presentation = document.querySelector('.presentation_row')
+
+  const build = ({ height, start, end, finSurPresentation = false }) => {
     gsap.set('.scroll_effect_text_item', { height })
+
+    const calee = finSurPresentation && presentation
 
     const tlScroll = gsap.timeline({
       scrollTrigger: {
         trigger: '.scroll_effect_text',
         start,
-        end,
+        endTrigger: calee ? presentation : undefined,
+        end: calee ? 'bottom bottom' : end,
         scrub: 0.5, // moins de latence que 1 → l'anim colle mieux au scroll
         markers: false, // ⚠️ passe à true pour régler start/end visuellement
       },
@@ -55,9 +68,14 @@ export default function initScrollText() {
   // Les callbacks matchMedia sont automatiquement « revert » au changement de
   // breakpoint : pas d'empilement entre desktop et mobile.
 
-  // Desktop : inchangé.
+  // Desktop : fin calée sur `.presentation_row` (voir plus haut).
   mm.add('(min-width: 768px)', () =>
-    build({ height: '245vh', start: '-100% 125%', end: '0% 140%' })
+    build({
+      height: '245vh',
+      start: '-100% 125%',
+      end: '0% 140%',
+      finSurPresentation: true,
+    })
   )
 
   // Mobile : rideau plus haut (couvre la photo entière) ET plage de scroll plus

@@ -56,6 +56,33 @@ export default function initScrollText() {
     return h > window.innerHeight * 1.05 ? h : '284vh'
   }
 
+  // HAUTEUR DESKTOP PLAFONNÉE SOUS LE SLIDER.
+  // Retour client (23/10) : sur un portable Windows en mise à l'échelle 125 %,
+  // la barre orange passait sur la légende du slider (« Péruwelz - Belgium »).
+  // 245vh est une hauteur relative à l'écran, alors que le slider et l'espace
+  // au-dessus du rideau ne le sont qu'en partie : plus la fenêtre est basse,
+  // plus l'écart fond. Mesuré à 1800 px de large : 50 px d'écart à 960 px de
+  // haut, 14 px à 730 px, et chevauchement (-7 px) à 600 px.
+  // On garde 245vh quand il y a la place (même rendu qu'avant), et on raccourcit
+  // juste ce qu'il faut sinon. Les colonnes sont ancrées en bas et décalées en
+  // escalier : c'est celle dont le bas est le plus haut qui monte le plus haut.
+  const MARGE_SOUS_SLIDER = 24
+  const hauteurSousSlider = () => {
+    const items = document.querySelectorAll('.scroll_effect_text_item')
+    const slider = [
+      ...document.querySelectorAll('.project_container, .project_location'),
+    ].filter((e) => e.getClientRects().length)
+    if (!items.length || !slider.length) return '245vh'
+    const basMin = Math.min(
+      ...[...items].map((i) => i.getBoundingClientRect().bottom)
+    )
+    const basSlider = Math.max(
+      ...slider.map((e) => e.getBoundingClientRect().bottom)
+    )
+    const max = basMin - basSlider - MARGE_SOUS_SLIDER
+    return Math.min(window.innerHeight * 2.45, max)
+  }
+
   const build = ({ height, start, end, finSurPresentation = false }) => {
     const calee = finSurPresentation && presentation
 
@@ -94,7 +121,7 @@ export default function initScrollText() {
   // Desktop : fin calée sur `.presentation_row` (voir plus haut).
   mm.add('(min-width: 768px)', () =>
     build({
-      height: '245vh',
+      height: hauteurSousSlider,
       start: '-100% 125%',
       end: '0% 140%',
       finSurPresentation: true,

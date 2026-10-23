@@ -481,7 +481,15 @@ function naviguerSPA(link, url) {
     // React Router ne met l'URL à jour qu'une fois le rendu validé : la relever
     // plus bas, après l'attente sur `location.pathname`, revenait à capturer le
     // conteneur NEUF, celui qui ne partira jamais.
-    const sentinelle = document.querySelector('.transition_div')
+    //
+    // Repli quand la page de départ n'a pas de rideau (pages projet, voir
+    // `onLinkClick`) : le premier enfant de <body>. `data-page` est posé sur
+    // <body> lui-même, qui survit à la navigation, mais tout son contenu est
+    // remplacé par React. Mesuré en prod sur /projet/lechappee → /about/ : ce
+    // nœud quitte le document dans la même frame que le changement d'URL.
+    const sentinelle =
+      document.querySelector('.transition_div') ||
+      document.body.firstElementChild
     // REMIX NE POSSÈDE QUE SES PROPRES LIENS. Ceux qu'il rend portent
     // `data-discover` et un gestionnaire React : leur renvoyer le clic suffit,
     // il fait la navigation client-side.
@@ -601,9 +609,16 @@ function onLinkClick(e) {
   if (normalisePath(url.pathname) === normalisePath(window.location.pathname))
     return
 
-  // Pas de volets dans le DOM → rien à animer. On laisse le lien agir
-  // normalement plutôt que d'imposer 1,5s d'attente sur un rideau inexistant.
-  if (!document.querySelector('.transition')) return
+  // PAGE DE DÉPART SANS RIDEAU — on saute l'animation de sortie, PAS le reste.
+  //
+  // On laissait auparavant le lien agir seul. Remix faisait alors sa navigation
+  // client-side sans que rien ne relance la page d'arrivée : ni
+  // `lancePageCourante()` (footer à 0px, d'où le « grand vide » avant elparo),
+  // ni `joueIntro()` — or la page d'arrivée, elle, A ses volets, rendus neufs à
+  // translateY(0). Écran noir « elparo » définitif. Retour client du 23/10,
+  // reproduit sur les deux domaines : /projet/lechappee (aucun `.transition`
+  // dans le gabarit projet) → About, Categories ou Contact.
+  const aRideau = !!document.querySelector('.transition')
 
   // Lien interne → rideau, puis navigation SPA, puis relance de la page.
   e.preventDefault()
@@ -613,8 +628,7 @@ function onLinkClick(e) {
   // la main avant d'ouvrir la nôtre (voir le commentaire de `revealTransition`).
   stopIntro?.()
   navigationEnCours = true
-
-  animateTransition()
+  ;(aRideau ? animateTransition() : Promise.resolve())
     .then(() => {
       fermeMenuSiOuvert()
       return naviguerSPA(link, url)

@@ -33,12 +33,22 @@ export default function initScrollText() {
   // FIN DE COURSE CALÉE SUR LA SECTION PRÉSENTATION (desktop).
   // Retour client : on ne voyait jamais la photo et le texte en entier, les
   // volets finissaient de se rétracter APRÈS que le haut de la section était
-  // passé sous la navbar. La rangée `.presentation_row` fait désormais
-  // 100svh - navbar - marge (CSS Webstudio) ; les volets doivent avoir fini
-  // quand son bas touche le bas de l'écran — à cet instant elle est visible
-  // en entier, juste sous la navbar.
+  // passé sous la navbar. Les volets doivent donc avoir fini quand le HAUT de
+  // `.presentation_row` arrive juste sous la navbar (navbar + marge, voir
+  // FIN_SOUS_NAVBAR).
+  // On vise le haut et non le bas : depuis la maquette du 29/10, la section
+  // (grand portrait 3/5) est plus haute que l'écran. Caler sur son bas
+  // faisait finir les volets alors que le titre était déjà sorti par le haut.
   // Sans la classe, repli sur l'ancien réglage (fin relative aux volets).
   const presentation = document.querySelector('.presentation_row')
+
+  // Haut de la présentation à 71 px (navbar) + 2rem de marge du haut de
+  // l'écran : la même position que l'ancien calage `bottom bottom` quand la
+  // rangée faisait `100svh - 71px - 2rem`. Fonction : remesurée au refresh.
+  const FIN_SOUS_NAVBAR = () => {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize)
+    return `top ${71 + 2 * rem}px`
+  }
 
   // HAUTEUR MOBILE CALÉE SUR LA PRÉSENTATION.
   // Retour client : avec 284vh fixes, les volets montaient jusque sur le slider
@@ -91,7 +101,7 @@ export default function initScrollText() {
         trigger: '.scroll_effect_text',
         start,
         endTrigger: calee ? presentation : undefined,
-        end: calee ? 'bottom bottom' : end,
+        end: calee ? FIN_SOUS_NAVBAR : end,
         scrub: 0.5, // moins de latence que 1 → l'anim colle mieux au scroll
         markers: false, // ⚠️ passe à true pour régler start/end visuellement
         // `height` peut être une fonction (mobile) : on la remesure à chaque

@@ -40,7 +40,11 @@ export default function initScrollText() {
   // (grand portrait 3/5) est plus haute que l'écran. Caler sur son bas
   // faisait finir les volets alors que le titre était déjà sorti par le haut.
   // Sans la classe, repli sur l'ancien réglage (fin relative aux volets).
-  const presentation = document.querySelector('.presentation_row')
+  // La section porte l'ID lisible `section-about-home` (posé dans Webstudio le
+  // 29/10) ; la classe reste en repli si l'ID disparaît.
+  const presentation =
+    document.getElementById('section-about-home') ||
+    document.querySelector('.presentation_row')
 
   // Haut de la présentation à 71 px (navbar) + 2rem de marge du haut de
   // l'écran : la même position que l'ancien calage `bottom bottom` quand la
@@ -73,8 +77,8 @@ export default function initScrollText() {
   // au-dessus du rideau ne le sont qu'en partie : plus la fenêtre est basse,
   // plus l'écart fond. Mesuré à 1800 px de large : 50 px d'écart à 960 px de
   // haut, 14 px à 730 px, et chevauchement (-7 px) à 600 px.
-  // On garde 245vh quand il y a la place (même rendu qu'avant), et on raccourcit
-  // juste ce qu'il faut sinon. Les colonnes sont ancrées en bas et décalées en
+  // Sert de plafond à hauteurJusquASection : le rideau ne monte jamais
+  // au-dessus du bas du slider (moins une marge). Les colonnes sont ancrées en bas et décalées en
   // escalier : c'est celle dont le bas est le plus haut qui monte le plus haut.
   const MARGE_SOUS_SLIDER = 24
   const hauteurSousSlider = () => {
@@ -89,8 +93,26 @@ export default function initScrollText() {
     const basSlider = Math.max(
       ...slider.map((e) => e.getBoundingClientRect().bottom)
     )
-    const max = basMin - basSlider - MARGE_SOUS_SLIDER
-    return Math.min(window.innerHeight * 2.45, max)
+    return basMin - basSlider - MARGE_SOUS_SLIDER
+  }
+
+  // HAUTEUR DESKTOP CALÉE SUR LE HAUT DE LA SECTION.
+  // Retour client (29/10) : les volets ne couvraient que le bas de la section,
+  // plafonnés à 245vh alors que la section (portrait 3/5) est plus haute que
+  // l'écran. Ils partent maintenant du haut de #section-about-home. On garde
+  // le plafond sous le slider (voir hauteurSousSlider) au cas où les deux se
+  // rapprocheraient sur une fenêtre basse.
+  const hauteurJusquASection = () => {
+    const items = document.querySelectorAll('.scroll_effect_text_item')
+    if (!presentation || !items.length) return hauteurSousSlider()
+    // Colonnes décalées en escalier : on prend la plus BASSE pour que les trois
+    // couvrent le haut de la section (les deux autres dépassent de 20/40 px).
+    const basMax = Math.max(
+      ...[...items].map((i) => i.getBoundingClientRect().bottom)
+    )
+    const h = basMax - presentation.getBoundingClientRect().top
+    const plafond = hauteurSousSlider()
+    return typeof plafond === 'number' ? Math.min(h, plafond) : h
   }
 
   const build = ({ height, start, end, finSurPresentation = false }) => {
@@ -98,9 +120,10 @@ export default function initScrollText() {
 
     const tlScroll = gsap.timeline({
       scrollTrigger: {
-        trigger: '.scroll_effect_text',
-        start,
-        endTrigger: calee ? presentation : undefined,
+        // Desktop : tout est calé sur la section — début quand son haut entre
+        // par le bas de l'écran, fin quand il arrive sous la navbar.
+        trigger: calee ? presentation : '.scroll_effect_text',
+        start: calee ? 'top bottom' : start,
         end: calee ? FIN_SOUS_NAVBAR : end,
         scrub: 0.5, // moins de latence que 1 → l'anim colle mieux au scroll
         markers: false, // ⚠️ passe à true pour régler start/end visuellement
@@ -128,12 +151,10 @@ export default function initScrollText() {
   // Les callbacks matchMedia sont automatiquement « revert » au changement de
   // breakpoint : pas d'empilement entre desktop et mobile.
 
-  // Desktop : fin calée sur `.presentation_row` (voir plus haut).
+  // Desktop : volets du haut de la section, début et fin calés sur elle.
   mm.add('(min-width: 768px)', () =>
     build({
-      height: hauteurSousSlider,
-      start: '-100% 125%',
-      end: '0% 140%',
+      height: hauteurJusquASection,
       finSurPresentation: true,
     })
   )

@@ -25,18 +25,20 @@ import { gsap } from '../lib/gsap.js'
 import { fetchCategories } from '../lib/hygraph.js'
 import { surNettoyage } from '../shared/teardown.js'
 
-// Base d'URL d'une page catégorie, PAR LANGUE. Le slug (ex. "wood") est
-// partagé FR/EN ; seul le segment de chemin change selon la langue de la page.
-//   EN → /category/wood     FR → /categorie/wood
-const CATEGORY_BASE_BY_LANG = { en: '/category', fr: '/categorie' }
-
-// Langue courante lue sur <html lang="…"> (posée par Webstudio selon la locale).
-// Si un jour le routing FR utilise un préfixe (ex. /fr/…), il suffira d'ajuster ici.
-function categoryBase() {
+// Langue de la page, lue sur <html lang="…"> (Webstudio : réglage Language de
+// la page ; la home FR à /fr est en `fr-FR`).
+function pageLang() {
   const lang = (document.documentElement.lang || 'en').toLowerCase()
-  return lang.startsWith('fr')
-    ? CATEGORY_BASE_BY_LANG.fr
-    : CATEGORY_BASE_BY_LANG.en
+  return lang.startsWith('fr') ? 'fr' : 'en'
+}
+
+// Base d'URL d'une page catégorie, PAR LANGUE. Le slug (ex. "wood") est
+// partagé FR/EN ; les pages FR vivent sous le préfixe /fr (mêmes chemins).
+//   EN → /category/wood     FR → /fr/category/wood
+const CATEGORY_BASE_BY_LANG = { en: '/category', fr: '/fr/category' }
+
+function categoryBase() {
+  return CATEGORY_BASE_BY_LANG[pageLang()]
 }
 
 export default function initTagCloudMagnetic() {
@@ -61,7 +63,7 @@ export default function initTagCloudMagnetic() {
 
   const ensureCategories = () => {
     if (!categoriesPromise) {
-      categoriesPromise = fetchCategories().catch((err) => {
+      categoriesPromise = fetchCategories(pageLang()).catch((err) => {
         categoriesPromise = null
         throw err
       })

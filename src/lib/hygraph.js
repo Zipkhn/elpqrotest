@@ -21,18 +21,23 @@ export async function hygraph(query, variables) {
   return json.data
 }
 
-// Récupère les catégories du nuage.
-// `title` et `slug` sont partagés (non localisés) → pas besoin d'argument locale.
+// Récupère les catégories du nuage, dans la langue de la page.
+// `locales: [fr, en]` : Hygraph renvoie le français et retombe sur l'anglais
+// si l'entrée n'a pas de version FR. Le `slug` est commun aux deux langues.
 // `project` est la relation : sa longueur sert à dimensionner les tags
 // (plus une catégorie a de projets, plus son tag est gros).
-export async function fetchCategories() {
-  const data = await hygraph(`{
-    categories(first: 100) {
-      title
-      slug
-      project { id }
-    }
-  }`)
+export async function fetchCategories(lang = 'en') {
+  const locales = lang === 'fr' ? ['fr', 'en'] : ['en']
+  const data = await hygraph(
+    `query ($locales: [Locale!]!) {
+      categories(first: 100, locales: $locales) {
+        title
+        slug
+        project { id }
+      }
+    }`,
+    { locales }
+  )
   return (data.categories || [])
     .filter((c) => c.title && c.slug)
     .map((c) => ({

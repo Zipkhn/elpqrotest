@@ -10,6 +10,7 @@
 import './webstudio-utils.js'
 import './styles/style.css'
 import lancePageCourante from './routes.js'
+import initLangue from './shared/langue.js'
 import initMenuReveal from './shared/menu-reveal.js'
 import initPageTransition from './shared/page-transition.js'
 
@@ -34,6 +35,10 @@ import initPageTransition from './shared/page-transition.js'
 // besoin de positions de layout définitives, sinon ScrollTrigger calcule ses
 // start/end sur une page en cours de montage.
 initPageTransition()
+
+// Bascule FR / EN (liens #lang-fr / #lang-en de la navbar). Délégation sur
+// window : pas besoin d'attendre le DOM.
+initLangue()
 
 window.Webstudio.onReady(() => {
   // Le menu plein écran (Dialog Radix) est global : on branche son animation

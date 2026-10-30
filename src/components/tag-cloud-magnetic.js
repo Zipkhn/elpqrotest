@@ -23,14 +23,8 @@
 //   3. L'ELLIPSE D'OR cadre l'ensemble, gros au centre, petits en périphérie.
 import { gsap } from '../lib/gsap.js'
 import { fetchCategories } from '../lib/hygraph.js'
+import { langueCourante as pageLang } from '../shared/langue.js'
 import { surNettoyage } from '../shared/teardown.js'
-
-// Langue de la page, lue sur <html lang="…"> (Webstudio : réglage Language de
-// la page ; la home FR à /fr est en `fr-FR`).
-function pageLang() {
-  const lang = (document.documentElement.lang || 'en').toLowerCase()
-  return lang.startsWith('fr') ? 'fr' : 'en'
-}
 
 // Base d'URL d'une page catégorie, PAR LANGUE. Le slug (ex. "wood") est
 // partagé FR/EN ; les pages FR vivent sous le préfixe /fr (mêmes chemins).

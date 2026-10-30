@@ -2,6 +2,8 @@
 // masquage des infos vides, lightbox vidéo, date.
 // (la mise en page de la grille est passée en CSS côté Webstudio, voir plus bas)
 
+import { langueCourante } from '../shared/langue.js'
+
 // Masque les blocs d'info dont le contenu est vide
 function initInfos() {
   const infos = [
@@ -94,7 +96,10 @@ function initVideo() {
   }
 }
 
-// Formate la date "brute" en "Month YYYY"
+// Formate la date "brute" (2025-05-01) en mois + année, dans la langue de la
+// page : « May 2025 » en anglais, « mai 2025 » en français.
+// timeZone UTC : la date ISO est lue à minuit UTC ; sans ça, un visiteur à
+// l'ouest de Greenwich verrait le mois précédent pour une date au 1er.
 function initDate() {
   const dateDOM = document.getElementById('date')
   if (!dateDOM) return
@@ -102,9 +107,11 @@ function initDate() {
   const date = new Date(dateDOM.innerHTML)
   if (isNaN(date)) return
 
-  dateDOM.innerHTML = new Intl.DateTimeFormat('en-US', {
+  const locale = langueCourante() === 'fr' ? 'fr-FR' : 'en-US'
+  dateDOM.innerHTML = new Intl.DateTimeFormat(locale, {
     month: 'long',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(date)
 }
 

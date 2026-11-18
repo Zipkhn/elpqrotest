@@ -60,13 +60,20 @@ export default function initMenuReveal() {
 //
 // 3) Liens du menu : pas de soulignement bleu (les <a> ont le style anchor par
 //    défaut du navigateur ; le texte visible est le <h1> blanc à l'intérieur).
+//
+// PORTÉE : toutes les règles de fermeture visent UNIQUEMENT l'overlay qui
+// contient les volets (`:has(.menu_draggers)`). Elles visaient auparavant
+// n'importe quel `.w-dialog-overlay` : quand la lightbox photo des pages projet
+// (un autre Dialog Webstudio) est arrivée, sa fermeture attendait elle aussi
+// les 0.95s de `wsMenuHold` — 985 ms mesurées pour fermer une photo.
+const MENU = '.w-dialog-overlay:has(.menu_draggers)'
 const MENU_STYLES = `
-  .w-dialog-content[data-state="closed"] { animation: wsMenuHold 0.3s linear forwards; }
-  .w-dialog-content[data-state="closed"] a,
-  .w-dialog-content[data-state="closed"] .w-close-button {
+  ${MENU} .w-dialog-content[data-state="closed"] { animation: wsMenuHold 0.3s linear forwards; }
+  ${MENU} .w-dialog-content[data-state="closed"] a,
+  ${MENU} .w-dialog-content[data-state="closed"] .w-close-button {
     animation: wsMenuLinkOut 0.28s ease forwards;
   }
-  .w-dialog-overlay[data-state="closed"] { animation: wsMenuHold 0.95s linear forwards; }
+  ${MENU}[data-state="closed"] { animation: wsMenuHold 0.95s linear forwards; }
   .w-dialog-overlay[data-state="closed"] .menu_dragger {
     animation: wsMenuVoletUp 0.5s cubic-bezier(0.7, 0, 0.84, 0) forwards;
   }
